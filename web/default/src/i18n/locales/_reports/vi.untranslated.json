@@ -1,0 +1,13 @@
+{
+  "Configure this notify URL in the Antom Dashboard": "Configure this notify URL in the Antom Dashboard",
+  "Enter new key to update (PKCS#8 base64)": "Enter new key to update (PKCS#8 base64)",
+  "Failed to send invitation": "Failed to send invitation",
+  "invited you to join their team": "invited you to join their team",
+  "No team members yet. Click \"Invite Member\" to invite users.": "No team members yet. Click \"Invite Member\" to invite users.",
+  "No team members yet. Invite users to join your team.": "No team members yet. Invite users to join your team.",
+  "Search by username, display name or email": "Search by username, display name or email",
+  "to respond": "to respond",
+  "Used to verify Antom responses and notifications": "Used to verify Antom responses and notifications",
+  "View and manage your invited team members": "View and manage your invited team members",
+  "Your RSA private key used to sign requests": "Your RSA private key used to sign requests"
+}
