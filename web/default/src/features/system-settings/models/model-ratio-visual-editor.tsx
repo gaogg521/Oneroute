@@ -24,7 +24,7 @@ import {
   type VisibilityState,
   type SortingState,
 } from '@tanstack/react-table'
-import { Copy, Plus } from 'lucide-react'
+import { Copy, Plus, Trash2 } from 'lucide-react'
 import {
   useState,
   useMemo,
@@ -38,6 +38,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import {
   DataTableBulkActions,
   DataTableToolbar,
@@ -132,6 +133,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editorOpen, setEditorOpen] = useState(false)
   const [editData, setEditData] = useState<ModelRatioData | null>(null)
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false)
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [globalFilter, setGlobalFilter] = useState('')
@@ -610,6 +612,114 @@ const ModelRatioVisualEditorComponent = forwardRef<
     )
   }, [editData, persistPricingData, t, table])
 
+  const handleBatchDelete = useCallback(() => {
+    const targetNames = table
+      .getFilteredSelectedRowModel()
+      .rows.map((row) => row.original.name)
+
+    if (targetNames.length === 0) return
+
+    const targetNameSet = new Set(targetNames)
+    const priceMap = safeJsonParse<Record<string, number>>(modelPrice, {
+      fallback: {},
+      silent: true,
+    })
+    const ratioMap = safeJsonParse<Record<string, number>>(modelRatio, {
+      fallback: {},
+      silent: true,
+    })
+    const cacheMap = safeJsonParse<Record<string, number>>(cacheRatio, {
+      fallback: {},
+      silent: true,
+    })
+    const createCacheMap = safeJsonParse<Record<string, number>>(
+      createCacheRatio,
+      { fallback: {}, silent: true }
+    )
+    const completionMap = safeJsonParse<Record<string, number>>(
+      completionRatio,
+      { fallback: {}, silent: true }
+    )
+    const imageMap = safeJsonParse<Record<string, number>>(imageRatio, {
+      fallback: {},
+      silent: true,
+    })
+    const audioMap = safeJsonParse<Record<string, number>>(audioRatio, {
+      fallback: {},
+      silent: true,
+    })
+    const audioCompletionMap = safeJsonParse<Record<string, number>>(
+      audioCompletionRatio,
+      { fallback: {}, silent: true }
+    )
+    const billingModeMap = safeJsonParse<Record<string, string>>(
+      billingMode,
+      { fallback: {}, silent: true }
+    )
+    const billingExprMap = safeJsonParse<Record<string, string>>(
+      billingExpr,
+      { fallback: {}, silent: true }
+    )
+
+    for (const name of targetNameSet) {
+      delete priceMap[name]
+      delete ratioMap[name]
+      delete cacheMap[name]
+      delete createCacheMap[name]
+      delete completionMap[name]
+      delete imageMap[name]
+      delete audioMap[name]
+      delete audioCompletionMap[name]
+      delete billingModeMap[name]
+      delete billingExprMap[name]
+    }
+
+    onChange('ModelPrice', JSON.stringify(priceMap, null, 2))
+    onChange('ModelRatio', JSON.stringify(ratioMap, null, 2))
+    onChange('CacheRatio', JSON.stringify(cacheMap, null, 2))
+    onChange('CreateCacheRatio', JSON.stringify(createCacheMap, null, 2))
+    onChange('CompletionRatio', JSON.stringify(completionMap, null, 2))
+    onChange('ImageRatio', JSON.stringify(imageMap, null, 2))
+    onChange('AudioRatio', JSON.stringify(audioMap, null, 2))
+    onChange(
+      'AudioCompletionRatio',
+      JSON.stringify(audioCompletionMap, null, 2)
+    )
+    onChange(
+      'billing_setting.billing_mode',
+      JSON.stringify(billingModeMap, null, 2)
+    )
+    onChange(
+      'billing_setting.billing_expr',
+      JSON.stringify(billingExprMap, null, 2)
+    )
+
+    if (editData && targetNameSet.has(editData.name)) {
+      setEditData(null)
+      setEditorOpen(false)
+      setSheetOpen(false)
+    }
+
+    table.resetRowSelection()
+    setShowBulkDeleteConfirm(false)
+    toast.success(t('Deleted {{count}} model(s)', { count: targetNames.length }))
+  }, [
+    table,
+    modelPrice,
+    modelRatio,
+    cacheRatio,
+    createCacheRatio,
+    completionRatio,
+    imageRatio,
+    audioRatio,
+    audioCompletionRatio,
+    billingMode,
+    billingExpr,
+    onChange,
+    editData,
+    t,
+  ])
+
   useImperativeHandle(
     ref,
     () => ({
@@ -759,7 +869,29 @@ const ModelRatioVisualEditorComponent = forwardRef<
             ? t('Copy {{name}} pricing', { name: editData.name })
             : t('Open a source model first')}
         </Button>
+        <Button
+          size='sm'
+          variant='destructive'
+          onClick={() => setShowBulkDeleteConfirm(true)}
+        >
+          <Trash2 data-icon='inline-start' />
+          {t('Delete selected')}
+        </Button>
       </DataTableBulkActions>
+
+      <ConfirmDialog
+        destructive
+        open={showBulkDeleteConfirm}
+        onOpenChange={setShowBulkDeleteConfirm}
+        handleConfirm={handleBatchDelete}
+        title={t('Delete {{count}} models?', {
+          count: table.getFilteredSelectedRowModel().rows.length,
+        })}
+        desc={t(
+          'This removes the selected models from the list. Click "Save model prices" afterward to persist the deletion.'
+        )}
+        confirmText={t('Delete')}
+      />
 
       {isMobile && (
         <ModelPricingSheet
