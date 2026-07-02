@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckSquare, RefreshCcw } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button'
 
 import {
   fetchUpstreamRatios,
+  getSystemOptions,
   getUpstreamChannels,
   updateSystemOption,
 } from '../api'
@@ -61,20 +62,17 @@ import { UpstreamRatioSyncTable } from './upstream-ratio-sync-table'
 // Types
 // ---------------------------------------------------------------------------
 
-type UpstreamRatioSyncProps = {
-  modelRatios: {
-    ModelPrice: string
-    ModelRatio: string
-    CompletionRatio: string
-    CacheRatio: string
-    CreateCacheRatio: string
-    ImageRatio: string
-    AudioRatio: string
-    AudioCompletionRatio: string
-    'billing_setting.billing_mode': string
-    'billing_setting.billing_expr': string
-  }
-}
+type RatioFieldKey =
+  | 'ModelPrice'
+  | 'ModelRatio'
+  | 'CompletionRatio'
+  | 'CacheRatio'
+  | 'CreateCacheRatio'
+  | 'ImageRatio'
+  | 'AudioRatio'
+  | 'AudioCompletionRatio'
+  | 'billing_setting.billing_mode'
+  | 'billing_setting.billing_expr'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -117,6 +115,38 @@ function parseJsonRecord<T>(raw: string | undefined | null): Record<string, T> {
   }
 }
 
+type ParsedRatios = Record<RatioFieldKey, Record<string, number | string>>
+
+// The sync-apply flow used to read its "current local price" base from a
+// prop populated from a possibly-stale query cache — captured before other
+// edits in this session were saved, or simply not yet refetched. Applying a
+// sync writes a full replacement value for each of these 10 option keys, so
+// syncing from a stale base silently discarded any real data that wasn't
+// reflected in the snapshot. Fetch the option list fresh right before
+// building the sync payload so the merge base always matches the database.
+async function fetchFreshRatios(): Promise<ParsedRatios> {
+  const res = await getSystemOptions()
+  const byKey = new Map((res.data ?? []).map((o) => [o.key, o.value]))
+  return {
+    ModelRatio: parseJsonRecord<number>(byKey.get('ModelRatio')),
+    CompletionRatio: parseJsonRecord<number>(byKey.get('CompletionRatio')),
+    CacheRatio: parseJsonRecord<number>(byKey.get('CacheRatio')),
+    CreateCacheRatio: parseJsonRecord<number>(byKey.get('CreateCacheRatio')),
+    ImageRatio: parseJsonRecord<number>(byKey.get('ImageRatio')),
+    AudioRatio: parseJsonRecord<number>(byKey.get('AudioRatio')),
+    AudioCompletionRatio: parseJsonRecord<number>(
+      byKey.get('AudioCompletionRatio')
+    ),
+    ModelPrice: parseJsonRecord<number>(byKey.get('ModelPrice')),
+    'billing_setting.billing_mode': parseJsonRecord<string>(
+      byKey.get('billing_setting.billing_mode')
+    ),
+    'billing_setting.billing_expr': parseJsonRecord<string>(
+      byKey.get('billing_setting.billing_expr')
+    ),
+  }
+}
+
 function deleteResolutionField(
   res: ResolutionsMap,
   model: string,
@@ -140,7 +170,7 @@ function deleteResolutionField(
 // Component
 // ---------------------------------------------------------------------------
 
-export function UpstreamRatioSync({ modelRatios }: UpstreamRatioSyncProps) {
+export function UpstreamRatioSync() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
 
@@ -154,6 +184,11 @@ export function UpstreamRatioSync({ modelRatios }: UpstreamRatioSyncProps) {
   const [resolutions, setResolutions] = useState<ResolutionsMap>({})
   const [conflictItems, setConflictItems] = useState<ConflictItem[]>([])
   const [confirmLoading, setConfirmLoading] = useState(false)
+  const [isPreparingSync, setIsPreparingSync] = useState(false)
+  // Snapshot fetched fresh at the moment "Apply Sync" was clicked, reused by
+  // the conflict-confirmation step so both stages act on the same base
+  // instead of re-fetching (and potentially observing different state).
+  const pendingSyncRatiosRef = useRef<ParsedRatios | null>(null)
 
   const { data: channelsData } = useQuery({
     queryKey: ['upstream-channels'],
@@ -334,29 +369,6 @@ export function UpstreamRatioSync({ modelRatios }: UpstreamRatioSyncProps) {
     []
   )
 
-  const parsedRatios = useMemo(() => {
-    return {
-      ModelRatio: parseJsonRecord<number>(modelRatios.ModelRatio),
-      CompletionRatio: parseJsonRecord<number>(modelRatios.CompletionRatio),
-      CacheRatio: parseJsonRecord<number>(modelRatios.CacheRatio),
-      CreateCacheRatio: parseJsonRecord<number>(modelRatios.CreateCacheRatio),
-      ImageRatio: parseJsonRecord<number>(modelRatios.ImageRatio),
-      AudioRatio: parseJsonRecord<number>(modelRatios.AudioRatio),
-      AudioCompletionRatio: parseJsonRecord<number>(
-        modelRatios.AudioCompletionRatio
-      ),
-      ModelPrice: parseJsonRecord<number>(modelRatios.ModelPrice),
-      'billing_setting.billing_mode': parseJsonRecord<string>(
-        modelRatios['billing_setting.billing_mode']
-      ),
-      'billing_setting.billing_expr': parseJsonRecord<string>(
-        modelRatios['billing_setting.billing_expr']
-      ),
-    }
-  }, [modelRatios])
-
-  type ParsedRatios = typeof parsedRatios
-
   const getLocalBillingCategory = (
     model: string,
     currentRatios: ParsedRatios
@@ -456,8 +468,24 @@ export function UpstreamRatioSync({ modelRatios }: UpstreamRatioSyncProps) {
     return entry ? entry[0] : 'Unknown'
   }
 
-  const handleApplySync = () => {
-    const currentRatios = parsedRatios
+  const handleApplySync = async () => {
+    setIsPreparingSync(true)
+    let currentRatios: ParsedRatios
+    try {
+      // Re-fetch the option values right before writing: `modelRatios` is a
+      // prop snapshot that can be stale (e.g. edited elsewhere in this
+      // session and not yet refetched here), and applying a sync writes a
+      // full replacement for each of these 10 keys — syncing from a stale
+      // base would silently discard real data. See fetchFreshRatios().
+      currentRatios = await fetchFreshRatios()
+    } catch {
+      toast.error(t('Failed to load current prices; sync aborted'))
+      setIsPreparingSync(false)
+      return
+    }
+    setIsPreparingSync(false)
+    pendingSyncRatiosRef.current = currentRatios
+
     const conflicts: ConflictItem[] = []
 
     const fixedPriceLabel = t('Fixed price')
@@ -512,9 +540,10 @@ export function UpstreamRatioSync({ modelRatios }: UpstreamRatioSyncProps) {
   }
 
   const handleConfirmConflict = async () => {
+    if (!pendingSyncRatiosRef.current) return
     setConfirmLoading(true)
     try {
-      const success = await performSync(parsedRatios)
+      const success = await performSync(pendingSyncRatiosRef.current)
       if (success) {
         setConflictDialogOpen(false)
       }
@@ -524,7 +553,11 @@ export function UpstreamRatioSync({ modelRatios }: UpstreamRatioSyncProps) {
   }
 
   const hasSelections = Object.keys(resolutions).length > 0
-  const isLoading = fetchMutation.isPending || isSyncPending || confirmLoading
+  const isLoading =
+    fetchMutation.isPending ||
+    isSyncPending ||
+    confirmLoading ||
+    isPreparingSync
 
   return (
     <div className='space-y-4'>
@@ -539,7 +572,7 @@ export function UpstreamRatioSync({ modelRatios }: UpstreamRatioSyncProps) {
             onClick={handleApplySync}
             disabled={!hasSelections || isLoading}
           >
-            {(isSyncPending || confirmLoading) && (
+            {(isSyncPending || confirmLoading || isPreparingSync) && (
               <span className='mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent' />
             )}
             <CheckSquare className='mr-2 h-4 w-4' />
