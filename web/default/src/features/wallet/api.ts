@@ -135,6 +135,19 @@ export async function requestAntomPayment(
 }
 
 /**
+ * Request OneOne (Oneverse) payment.
+ * Returns a hosted checkout URL in `pay_link`, like Stripe/Antom.
+ */
+export async function requestOneOnePayment(
+  request: PaymentRequest
+): Promise<StripePaymentResponse> {
+  const res = await api.post('/api/user/oneone/pay', request, {
+    skipBusinessError: true,
+  } as Record<string, unknown>)
+  return res.data
+}
+
+/**
  * Request Creem payment
  */
 export async function requestCreemPayment(

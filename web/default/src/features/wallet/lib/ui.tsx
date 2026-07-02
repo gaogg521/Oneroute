@@ -133,6 +133,15 @@ export function getPaymentIcon(
           style={{ color: PAYMENT_ICON_COLORS[PAYMENT_TYPES.WAFFO] }}
         />
       )
+    case PAYMENT_TYPES.ONEONE:
+      return (
+        <img
+          src='/oneone-logo.png'
+          alt={altName || i18next.t('OneOne')}
+          className={className}
+          style={{ objectFit: 'contain' }}
+        />
+      )
     case PAYMENT_TYPES.WAFFO_PANCAKE:
       // The W glyph fills only ~40% of its viewBox vertically (wide and
       // short letterform); scale(2) brings its rendered height in line

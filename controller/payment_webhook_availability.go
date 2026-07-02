@@ -105,6 +105,22 @@ func isAntomWebhookEnabled() bool {
 	return isAntomTopUpEnabled()
 }
 
+func isOneOneTopUpEnabled() bool {
+	if !isPaymentComplianceConfirmed() {
+		return false
+	}
+	return strings.TrimSpace(setting.OneOneMerchantUUID) != "" &&
+		strings.TrimSpace(setting.OneOneGameName) != "" &&
+		strings.TrimSpace(setting.OneOnePasswordSecret) != "" &&
+		strings.TrimSpace(setting.OneOneSecret) != "" &&
+		strings.TrimSpace(setting.OneOnePaymentChannel) != "" &&
+		strings.TrimSpace(setting.OneOneCountry) != ""
+}
+
+func isOneOneWebhookEnabled() bool {
+	return isOneOneTopUpEnabled()
+}
+
 func isEpayTopUpEnabled() bool {
 	if !isPaymentComplianceConfirmed() {
 		return false

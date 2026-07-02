@@ -9,5 +9,12 @@
   "to respond": "to respond",
   "Used to verify Antom responses and notifications": "Used to verify Antom responses and notifications",
   "View and manage your invited team members": "View and manage your invited team members",
-  "Your RSA private key used to sign requests": "Your RSA private key used to sign requests"
+  "Your RSA private key used to sign requests": "Your RSA private key used to sign requests",
+  "Enter new password to update": "Enter new password to update",
+  "Enter new secret to update": "Enter new secret to update",
+  "HMAC-SHA256 key used to sign the X-Signature header": "HMAC-SHA256 key used to sign the X-Signature header",
+  "Provide this notify URL as the webhook_url when the Oneverse account is provisioned": "Provide this notify URL as the webhook_url when the Oneverse account is provisioned",
+  "Used to obtain a Bearer token from /api/northbound/login": "Used to obtain a Bearer token from /api/northbound/login",
+  "If another enabled gateway declares the same rail, only the cheaper one (by unit price) is shown to users.": "If another enabled gateway declares the same rail, only the cheaper one (by unit price) is shown to users.",
+  "Its rail is fixed to Alipay for cross-gateway price comparison — if another gateway also declares Alipay, only the cheaper one is shown to users.": "Its rail is fixed to Alipay for cross-gateway price comparison — if another gateway also declares Alipay, only the cheaper one is shown to users."
 }

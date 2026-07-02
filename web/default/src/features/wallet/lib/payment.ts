@@ -86,6 +86,17 @@ export function isAntomPayment(paymentType: string): boolean {
 }
 
 /**
+ * Check if payment method is OneOne (Oneverse).
+ *
+ * OneOne returns a hosted checkout URL as `pay_link`, so it follows the same
+ * window.open dispatch path as Stripe/Antom rather than the epay form
+ * submission.
+ */
+export function isOneOnePayment(paymentType: string): boolean {
+  return paymentType === PAYMENT_TYPES.ONEONE
+}
+
+/**
  * Check if payment method is Waffo Pancake
  *
  * Pancake is a metered-style payment that goes through a dedicated checkout

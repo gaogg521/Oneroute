@@ -101,6 +101,17 @@ func InitOptionMap() {
 	common.OptionMap["AntomCurrency"] = setting.AntomCurrency
 	common.OptionMap["AntomUnitPrice"] = strconv.FormatFloat(setting.AntomUnitPrice, 'f', -1, 64)
 	common.OptionMap["AntomMinTopUp"] = strconv.Itoa(setting.AntomMinTopUp)
+	common.OptionMap["OneOneMerchantUUID"] = setting.OneOneMerchantUUID
+	common.OptionMap["OneOneGameName"] = setting.OneOneGameName
+	common.OptionMap["OneOnePasswordSecret"] = setting.OneOnePasswordSecret
+	common.OptionMap["OneOneSecret"] = setting.OneOneSecret
+	common.OptionMap["OneOneBaseURL"] = setting.OneOneBaseURL
+	common.OptionMap["OneOnePaymentChannel"] = setting.OneOnePaymentChannel
+	common.OptionMap["OneOneCountry"] = setting.OneOneCountry
+	common.OptionMap["OneOneCurrency"] = setting.OneOneCurrency
+	common.OptionMap["OneOneUnitPrice"] = strconv.FormatFloat(setting.OneOneUnitPrice, 'f', -1, 64)
+	common.OptionMap["OneOneMinTopUp"] = strconv.Itoa(setting.OneOneMinTopUp)
+	common.OptionMap["OneOneRail"] = setting.OneOneRail
 	common.OptionMap["WaffoEnabled"] = strconv.FormatBool(setting.WaffoEnabled)
 	common.OptionMap["WaffoApiKey"] = setting.WaffoApiKey
 	common.OptionMap["WaffoPrivateKey"] = setting.WaffoPrivateKey
@@ -454,6 +465,28 @@ func updateOptionMap(key string, value string) (err error) {
 		setting.AntomUnitPrice, _ = strconv.ParseFloat(value, 64)
 	case "AntomMinTopUp":
 		setting.AntomMinTopUp, _ = strconv.Atoi(value)
+	case "OneOneMerchantUUID":
+		setting.OneOneMerchantUUID = value
+	case "OneOneGameName":
+		setting.OneOneGameName = value
+	case "OneOnePasswordSecret":
+		setting.OneOnePasswordSecret = value
+	case "OneOneSecret":
+		setting.OneOneSecret = value
+	case "OneOneBaseURL":
+		setting.OneOneBaseURL = value
+	case "OneOnePaymentChannel":
+		setting.OneOnePaymentChannel = value
+	case "OneOneCountry":
+		setting.OneOneCountry = value
+	case "OneOneCurrency":
+		setting.OneOneCurrency = value
+	case "OneOneUnitPrice":
+		setting.OneOneUnitPrice, _ = strconv.ParseFloat(value, 64)
+	case "OneOneMinTopUp":
+		setting.OneOneMinTopUp, _ = strconv.Atoi(value)
+	case "OneOneRail":
+		setting.OneOneRail = value
 	case "WaffoEnabled":
 		setting.WaffoEnabled = value == "true"
 	case "WaffoApiKey":

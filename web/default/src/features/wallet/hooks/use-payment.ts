@@ -27,11 +27,13 @@ import {
   requestPayment,
   requestStripePayment,
   requestAntomPayment,
+  requestOneOnePayment,
   isApiSuccess,
 } from '../api'
 import {
   isStripePayment,
   isAntomPayment,
+  isOneOnePayment,
   isWaffoPancakePayment,
   submitPaymentForm,
 } from '../lib'
@@ -86,8 +88,9 @@ export function usePayment() {
 
         const isStripe = isStripePayment(paymentType)
         const isAntom = isAntomPayment(paymentType)
-        // Stripe and Antom both return a hosted checkout URL (pay_link).
-        const usesPayLink = isStripe || isAntom
+        const isOneOne = isOneOnePayment(paymentType)
+        // Stripe, Antom, and OneOne all return a hosted checkout URL (pay_link).
+        const usesPayLink = isStripe || isAntom || isOneOne
         const amount = Math.floor(topupAmount)
 
         const response = isStripe
@@ -100,17 +103,22 @@ export function usePayment() {
                 amount,
                 payment_method: 'antom',
               })
-            : await requestPayment({
-                amount,
-                payment_method: paymentType,
-              })
+            : isOneOne
+              ? await requestOneOnePayment({
+                  amount,
+                  payment_method: 'oneone',
+                })
+              : await requestPayment({
+                  amount,
+                  payment_method: paymentType,
+                })
 
         if (!isApiSuccess(response)) {
           toast.error(response.message || i18next.t('Payment request failed'))
           return false
         }
 
-        // Handle hosted-checkout payment (Stripe / Antom)
+        // Handle hosted-checkout payment (Stripe / Antom / OneOne)
         if (usesPayLink && response.data?.pay_link) {
           window.open(response.data.pay_link as string, '_blank')
           toast.success(i18next.t('Redirecting to payment page...'))

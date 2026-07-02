@@ -25,6 +25,8 @@ import type {
   SystemOptionsResponse,
   SystemTaskListResponse,
   SystemTaskResponse,
+  TestOneOneConnectionRequest,
+  TestOneOneConnectionResponse,
   UpdateOptionRequest,
   UpdateOptionResponse,
   UpstreamChannelsResponse,
@@ -45,6 +47,16 @@ export async function confirmPaymentCompliance() {
   const res = await api.post<ConfirmPaymentComplianceResponse>(
     '/api/option/payment_compliance',
     { confirmed: true }
+  )
+  return res.data
+}
+
+export async function testOneOneConnection(
+  request: TestOneOneConnectionRequest
+) {
+  const res = await api.post<TestOneOneConnectionResponse>(
+    '/api/option/oneone/test',
+    request
   )
   return res.data
 }

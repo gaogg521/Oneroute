@@ -161,6 +161,17 @@ const BILLING_SECTIONS = [
           AntomCurrency: settings.AntomCurrency ?? 'USD',
           AntomUnitPrice: settings.AntomUnitPrice ?? 1,
           AntomMinTopUp: settings.AntomMinTopUp ?? 1,
+          OneOneMerchantUUID: settings.OneOneMerchantUUID ?? '',
+          OneOneGameName: settings.OneOneGameName ?? '',
+          OneOnePasswordSecret: settings.OneOnePasswordSecret ?? '',
+          OneOneSecret: settings.OneOneSecret ?? '',
+          OneOneBaseURL: settings.OneOneBaseURL ?? 'https://games.oneone.com',
+          OneOnePaymentChannel: settings.OneOnePaymentChannel ?? '',
+          OneOneCountry: settings.OneOneCountry ?? '',
+          OneOneCurrency: settings.OneOneCurrency ?? 'USD',
+          OneOneUnitPrice: settings.OneOneUnitPrice ?? 1,
+          OneOneMinTopUp: settings.OneOneMinTopUp ?? 1,
+          OneOneRail: settings.OneOneRail ?? '',
         }}
         waffoDefaultValues={{
           WaffoEnabled: settings.WaffoEnabled ?? false,

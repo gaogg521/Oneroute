@@ -36,6 +36,14 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 const createPaymentMethodDialogSchema = (t: (key: string) => string) =>
   z.object({
@@ -43,7 +51,11 @@ const createPaymentMethodDialogSchema = (t: (key: string) => string) =>
     type: z.string().min(1, t('Payment type key is required')),
     icon: z.string().optional(),
     min_topup: z.string().optional(),
+    rail: z.string().optional(),
   })
+
+// Sentinel for "no rail" since Select cannot represent an empty-string item value.
+const RAIL_NONE = 'none'
 
 type PaymentMethodDialogFormValues = z.infer<
   ReturnType<typeof createPaymentMethodDialogSchema>
@@ -58,6 +70,12 @@ export type PaymentMethodData = {
   min_topup?: string
   color?: string
   enabled?: boolean
+  /**
+   * Optional underlying payment rail (e.g. "alipay", "wechat"). When two or
+   * more enabled gateways (Epay entries and/or Antom/OneOne) declare the
+   * same rail, the backend keeps only the cheapest one and hides the rest.
+   */
+  rail?: string
 }
 
 type PaymentMethodDialogProps = {
@@ -121,6 +139,7 @@ export function PaymentMethodDialog({
       type: '',
       icon: '',
       min_topup: '',
+      rail: RAIL_NONE,
     },
   })
 
@@ -133,6 +152,7 @@ export function PaymentMethodDialog({
         type: editData.type,
         icon: editData.icon ?? getDefaultIconName(editData.type),
         min_topup: editData.min_topup ?? '',
+        rail: editData.rail || RAIL_NONE,
       })
     } else {
       form.reset({
@@ -140,6 +160,7 @@ export function PaymentMethodDialog({
         type: '',
         icon: '',
         min_topup: '',
+        rail: RAIL_NONE,
       })
     }
   }, [editData, form, open])
@@ -154,6 +175,9 @@ export function PaymentMethodDialog({
     }
     if (values.min_topup && values.min_topup.trim() !== '') {
       data.min_topup = values.min_topup
+    }
+    if (values.rail && values.rail !== RAIL_NONE) {
+      data.rail = values.rail
     }
     onSave(data)
     form.reset()
@@ -306,6 +330,48 @@ export function PaymentMethodDialog({
                 </FormControl>
                 <FormDescription>
                   {t('Optional minimum recharge amount for this method.')}
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='rail'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Cross-gateway rail')}</FormLabel>
+                <Select
+                  items={[
+                    { value: RAIL_NONE, label: t('Not compared') },
+                    { value: 'alipay', label: t('Alipay') },
+                    { value: 'wechat', label: t('WeChat Pay') },
+                  ]}
+                  onValueChange={field.onChange}
+                  value={field.value}
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder={t('Not compared')} />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent alignItemWithTrigger={false}>
+                    <SelectGroup>
+                      <SelectItem value={RAIL_NONE}>
+                        {t('Not compared')}
+                      </SelectItem>
+                      <SelectItem value='alipay'>{t('Alipay')}</SelectItem>
+                      <SelectItem value='wechat'>
+                        {t('WeChat Pay')}
+                      </SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <FormDescription className='leading-relaxed'>
+                  {t(
+                    'If another enabled gateway declares the same rail, only the cheaper one (by unit price) is shown to users.'
+                  )}
                 </FormDescription>
                 <FormMessage />
               </FormItem>

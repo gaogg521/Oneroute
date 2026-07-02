@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Code2, Eye, ShieldAlert } from 'lucide-react'
+import { Code2, Eye, Loader2, ShieldAlert } from 'lucide-react'
 import * as React from 'react'
 import { useForm, type Resolver } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -43,12 +43,20 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 
-import { confirmPaymentCompliance } from '../api'
+import { confirmPaymentCompliance, testOneOneConnection } from '../api'
 import {
   SettingsForm,
   SettingsSwitchContent,
@@ -171,6 +179,21 @@ const paymentSchema = z.object({
   AntomCurrency: z.string(),
   AntomUnitPrice: z.coerce.number().min(0),
   AntomMinTopUp: z.coerce.number().min(0),
+  OneOneMerchantUUID: z.string(),
+  OneOneGameName: z.string(),
+  OneOnePasswordSecret: z.string(),
+  OneOneSecret: z.string(),
+  OneOneBaseURL: z.string().refine((value) => {
+    const trimmed = value.trim()
+    if (!trimmed) return true
+    return /^https?:\/\//.test(trimmed)
+  }, 'Provide a valid URL starting with http:// or https://'),
+  OneOnePaymentChannel: z.string(),
+  OneOneCountry: z.string(),
+  OneOneCurrency: z.string(),
+  OneOneUnitPrice: z.coerce.number().min(0),
+  OneOneMinTopUp: z.coerce.number().min(0),
+  OneOneRail: z.string(),
   WaffoEnabled: z.boolean(),
   WaffoApiKey: z.string(),
   WaffoPrivateKey: z.string(),
@@ -199,6 +222,8 @@ type PaymentBaseFormValues = Omit<
 
 const CURRENT_COMPLIANCE_TERMS_VERSION = 'v1'
 const paymentTabContentClassName = 'mt-6 min-w-0'
+// Sentinel for "no rail" since Select cannot represent an empty-string item value.
+const RAIL_NONE = 'none'
 
 type PaymentComplianceDefaults = {
   confirmed: boolean
@@ -373,6 +398,36 @@ export function PaymentSettingsSection({
 
   const { isSubmitting } = form.formState
 
+  const [oneOneTestResult, setOneOneTestResult] = React.useState<{
+    success: boolean
+    message: string
+  } | null>(null)
+
+  const testOneOneConnectionMutation = useMutation({
+    mutationFn: testOneOneConnection,
+    onSuccess: (data) => {
+      setOneOneTestResult({ success: data.success, message: data.message })
+      if (data.success) {
+        toast.success(data.message || t('Connection succeeded'))
+      } else {
+        toast.error(data.message || t('Connection failed'))
+      }
+    },
+    onError: (error: Error) => {
+      const message = error.message || t('Connection failed')
+      setOneOneTestResult({ success: false, message })
+      toast.error(message)
+    },
+  })
+
+  const handleTestOneOneConnection = () => {
+    setOneOneTestResult(null)
+    testOneOneConnectionMutation.mutate({
+      merchant_uuid: form.getValues('OneOneMerchantUUID').trim(),
+      password: form.getValues('OneOnePasswordSecret').trim(),
+    })
+  }
+
   const setPaymentValue = React.useCallback(
     (
       key: keyof PaymentFormValues,
@@ -457,6 +512,17 @@ export function PaymentSettingsSection({
       AntomCurrency: values.AntomCurrency.trim() || 'USD',
       AntomUnitPrice: values.AntomUnitPrice,
       AntomMinTopUp: values.AntomMinTopUp,
+      OneOneMerchantUUID: values.OneOneMerchantUUID.trim(),
+      OneOneGameName: values.OneOneGameName.trim(),
+      OneOnePasswordSecret: values.OneOnePasswordSecret.trim(),
+      OneOneSecret: values.OneOneSecret.trim(),
+      OneOneBaseURL: removeTrailingSlash(values.OneOneBaseURL),
+      OneOnePaymentChannel: values.OneOnePaymentChannel.trim(),
+      OneOneCountry: values.OneOneCountry.trim(),
+      OneOneCurrency: values.OneOneCurrency.trim() || 'USD',
+      OneOneUnitPrice: values.OneOneUnitPrice,
+      OneOneMinTopUp: values.OneOneMinTopUp,
+      OneOneRail: values.OneOneRail.trim(),
       WaffoEnabled: values.WaffoEnabled,
       WaffoSandbox: values.WaffoSandbox,
       WaffoMerchantId: values.WaffoMerchantId.trim(),
@@ -510,6 +576,17 @@ export function PaymentSettingsSection({
       AntomCurrency: initialRef.current.AntomCurrency.trim() || 'USD',
       AntomUnitPrice: initialRef.current.AntomUnitPrice,
       AntomMinTopUp: initialRef.current.AntomMinTopUp,
+      OneOneMerchantUUID: initialRef.current.OneOneMerchantUUID.trim(),
+      OneOneGameName: initialRef.current.OneOneGameName.trim(),
+      OneOnePasswordSecret: initialRef.current.OneOnePasswordSecret.trim(),
+      OneOneSecret: initialRef.current.OneOneSecret.trim(),
+      OneOneBaseURL: removeTrailingSlash(initialRef.current.OneOneBaseURL),
+      OneOnePaymentChannel: initialRef.current.OneOnePaymentChannel.trim(),
+      OneOneCountry: initialRef.current.OneOneCountry.trim(),
+      OneOneCurrency: initialRef.current.OneOneCurrency.trim() || 'USD',
+      OneOneUnitPrice: initialRef.current.OneOneUnitPrice,
+      OneOneMinTopUp: initialRef.current.OneOneMinTopUp,
+      OneOneRail: initialRef.current.OneOneRail.trim(),
       WaffoEnabled: initialRef.current.WaffoEnabled,
       WaffoSandbox: initialRef.current.WaffoSandbox,
       WaffoMerchantId: initialRef.current.WaffoMerchantId.trim(),
@@ -693,6 +770,68 @@ export function PaymentSettingsSection({
 
     if (sanitized.AntomMinTopUp !== initial.AntomMinTopUp) {
       updates.push({ key: 'AntomMinTopUp', value: sanitized.AntomMinTopUp })
+    }
+
+    if (sanitized.OneOneMerchantUUID !== initial.OneOneMerchantUUID) {
+      updates.push({
+        key: 'OneOneMerchantUUID',
+        value: sanitized.OneOneMerchantUUID,
+      })
+    }
+
+    if (sanitized.OneOneGameName !== initial.OneOneGameName) {
+      updates.push({ key: 'OneOneGameName', value: sanitized.OneOneGameName })
+    }
+
+    if (
+      sanitized.OneOnePasswordSecret &&
+      sanitized.OneOnePasswordSecret !== initial.OneOnePasswordSecret
+    ) {
+      updates.push({
+        key: 'OneOnePasswordSecret',
+        value: sanitized.OneOnePasswordSecret,
+      })
+    }
+
+    if (
+      sanitized.OneOneSecret &&
+      sanitized.OneOneSecret !== initial.OneOneSecret
+    ) {
+      updates.push({ key: 'OneOneSecret', value: sanitized.OneOneSecret })
+    }
+
+    if (sanitized.OneOneBaseURL !== initial.OneOneBaseURL) {
+      updates.push({ key: 'OneOneBaseURL', value: sanitized.OneOneBaseURL })
+    }
+
+    if (sanitized.OneOnePaymentChannel !== initial.OneOnePaymentChannel) {
+      updates.push({
+        key: 'OneOnePaymentChannel',
+        value: sanitized.OneOnePaymentChannel,
+      })
+    }
+
+    if (sanitized.OneOneCountry !== initial.OneOneCountry) {
+      updates.push({ key: 'OneOneCountry', value: sanitized.OneOneCountry })
+    }
+
+    if (sanitized.OneOneCurrency !== initial.OneOneCurrency) {
+      updates.push({ key: 'OneOneCurrency', value: sanitized.OneOneCurrency })
+    }
+
+    if (sanitized.OneOneUnitPrice !== initial.OneOneUnitPrice) {
+      updates.push({
+        key: 'OneOneUnitPrice',
+        value: sanitized.OneOneUnitPrice,
+      })
+    }
+
+    if (sanitized.OneOneMinTopUp !== initial.OneOneMinTopUp) {
+      updates.push({ key: 'OneOneMinTopUp', value: sanitized.OneOneMinTopUp })
+    }
+
+    if (sanitized.OneOneRail !== initial.OneOneRail) {
+      updates.push({ key: 'OneOneRail', value: sanitized.OneOneRail })
     }
 
     if (sanitized.WaffoEnabled !== initial.WaffoEnabled) {
@@ -943,12 +1082,13 @@ export function PaymentSettingsSection({
           />
           <Tabs defaultValue='general' className='min-w-0'>
             <div className='overflow-x-auto pb-1'>
-              <TabsList className='grid min-w-[50rem] grid-cols-7'>
+              <TabsList className='grid min-w-[56rem] grid-cols-8'>
                 <TabsTrigger value='general'>{t('General')}</TabsTrigger>
                 <TabsTrigger value='epay'>Epay</TabsTrigger>
                 <TabsTrigger value='stripe'>{t('Stripe')}</TabsTrigger>
                 <TabsTrigger value='creem'>Creem</TabsTrigger>
                 <TabsTrigger value='antom'>Antom</TabsTrigger>
+                <TabsTrigger value='oneone'>OneOne</TabsTrigger>
                 <TabsTrigger value='waffo-pancake'>Waffo Pancake</TabsTrigger>
                 <TabsTrigger value='waffo'>Waffo</TabsTrigger>
               </TabsList>
@@ -1666,6 +1806,11 @@ export function PaymentSettingsSection({
                       'Direct Alipay overseas (Antom / Alipay Global) integration via REST API'
                     )}
                   </p>
+                  <p className='text-muted-foreground mt-1 text-sm'>
+                    {t(
+                      'Its rail is fixed to Alipay for cross-gateway price comparison — if another gateway also declares Alipay, only the cheaper one is shown to users.'
+                    )}
+                  </p>
                 </div>
 
                 <div className='rounded-md bg-blue-50 p-4 text-sm text-blue-900 dark:bg-blue-950 dark:text-blue-100'>
@@ -1841,6 +1986,325 @@ export function PaymentSettingsSection({
                             {...safeNumberFieldProps(field)}
                           />
                         </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value='oneone' className={paymentTabContentClassName}>
+              <div className='space-y-4'>
+                <div>
+                  <h3 className='text-lg font-medium'>
+                    {t('OneOne (Oneverse) Gateway')}
+                  </h3>
+                  <p className='text-muted-foreground text-sm'>
+                    {t(
+                      'Oneverse Northbound API V1 integration via REST API + HMAC-SHA256 signing'
+                    )}
+                  </p>
+                </div>
+
+                <div className='rounded-md bg-blue-50 p-4 text-sm text-blue-900 dark:bg-blue-950 dark:text-blue-100'>
+                  <p className='mb-2 font-medium'>{t('Webhook Configuration:')}</p>
+                  <ul className='list-inside list-disc space-y-1'>
+                    <li>
+                      {t('Notify URL:')}{' '}
+                      <code className='rounded bg-blue-100 px-1 py-0.5 text-xs dark:bg-blue-900'>
+                        {'<ServerAddress>/api/oneone/notify'}
+                      </code>
+                    </li>
+                    <li>
+                      {t(
+                        'Provide this notify URL as the webhook_url when the Oneverse account is provisioned'
+                      )}
+                    </li>
+                  </ul>
+                </div>
+
+                <div className='grid gap-6 md:grid-cols-2'>
+                  <FormField
+                    control={form.control}
+                    name='OneOneMerchantUUID'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Merchant UUID')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder='9bbb4da8-4912-4706-962e-fa801c15ec16'
+                            autoComplete='off'
+                            {...field}
+                            onChange={(event) => field.onChange(event.target.value)}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t('Login UUID assigned by Oneverse')}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name='OneOneGameName'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Game name')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder='new-game'
+                            {...field}
+                            onChange={(event) => field.onChange(event.target.value)}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t('game_name assigned by Oneverse for this merchant')}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div className='grid gap-6 md:grid-cols-2'>
+                  <FormField
+                    control={form.control}
+                    name='OneOnePasswordSecret'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Login password')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            type='password'
+                            placeholder={t('Enter new password to update')}
+                            autoComplete='new-password'
+                            {...field}
+                            onChange={(event) => field.onChange(event.target.value)}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t(
+                            'Used to obtain a Bearer token from /api/northbound/login'
+                          )}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name='OneOneSecret'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Signing secret')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            type='password'
+                            placeholder={t('Enter new secret to update')}
+                            autoComplete='new-password'
+                            {...field}
+                            onChange={(event) => field.onChange(event.target.value)}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t('HMAC-SHA256 key used to sign the X-Signature header')}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div className='flex flex-col gap-2 sm:flex-row sm:items-center'>
+                  <Button
+                    type='button'
+                    variant='outline'
+                    size='sm'
+                    disabled={testOneOneConnectionMutation.isPending}
+                    onClick={handleTestOneOneConnection}
+                    className='w-fit'
+                  >
+                    {testOneOneConnectionMutation.isPending && (
+                      <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                    )}
+                    {t('Test Connection')}
+                  </Button>
+                  {oneOneTestResult && (
+                    <p
+                      className={cn(
+                        'text-sm',
+                        oneOneTestResult.success
+                          ? 'text-green-600 dark:text-green-400'
+                          : 'text-destructive'
+                      )}
+                    >
+                      {oneOneTestResult.message}
+                    </p>
+                  )}
+                </div>
+
+                <FormField
+                  control={form.control}
+                  name='OneOneBaseURL'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Gateway endpoint')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder='https://games.oneone.com'
+                          {...field}
+                          onChange={(event) => field.onChange(event.target.value)}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t('OneOne API endpoint base URL')}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <div className='grid gap-6 md:grid-cols-2 lg:grid-cols-4'>
+                  <FormField
+                    control={form.control}
+                    name='OneOnePaymentChannel'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Payment channel')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder='qr_promptpay_thb'
+                            {...field}
+                            onChange={(event) => field.onChange(event.target.value)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name='OneOneCountry'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Country code')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder='CN'
+                            {...field}
+                            onChange={(event) => field.onChange(event.target.value)}
+                          />
+                        </FormControl>
+                        <FormDescription>{t('ISO 3166-2')}</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name='OneOneCurrency'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Currency')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder='USD'
+                            {...field}
+                            onChange={(event) => field.onChange(event.target.value)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name='OneOneUnitPrice'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Unit price (local currency / USD)')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            type='number'
+                            step='0.01'
+                            min={0}
+                            {...safeNumberFieldProps(field)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div className='grid gap-6 md:grid-cols-2'>
+                  <FormField
+                    control={form.control}
+                    name='OneOneMinTopUp'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Minimum top-up (USD)')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            type='number'
+                            step='1'
+                            min={0}
+                            {...safeNumberFieldProps(field)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name='OneOneRail'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Cross-gateway rail')}</FormLabel>
+                        <Select
+                          items={[
+                            { value: RAIL_NONE, label: t('Not compared') },
+                            { value: 'alipay', label: t('Alipay') },
+                            { value: 'wechat', label: t('WeChat Pay') },
+                          ]}
+                          onValueChange={(value) =>
+                            field.onChange(value === RAIL_NONE ? '' : value)
+                          }
+                          value={field.value || RAIL_NONE}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder={t('Not compared')} />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent alignItemWithTrigger={false}>
+                            <SelectGroup>
+                              <SelectItem value={RAIL_NONE}>
+                                {t('Not compared')}
+                              </SelectItem>
+                              <SelectItem value='alipay'>
+                                {t('Alipay')}
+                              </SelectItem>
+                              <SelectItem value='wechat'>
+                                {t('WeChat Pay')}
+                              </SelectItem>
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                        <FormDescription className='leading-relaxed'>
+                          {t(
+                            'If another enabled gateway declares the same rail, only the cheaper one (by unit price) is shown to users.'
+                          )}
+                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}

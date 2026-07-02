@@ -140,6 +140,8 @@ export interface TopupInfo {
   enable_creem_topup?: boolean
   /** Whether Antom (Alipay overseas) topup is enabled */
   enable_antom_topup?: boolean
+  /** Whether OneOne (Oneverse) topup is enabled */
+  enable_oneone_topup?: boolean
   /** Available Creem products */
   creem_products?: CreemProduct[]
   /** Whether Waffo topup is enabled */

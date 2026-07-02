@@ -50,6 +50,16 @@ export type ConfirmPaymentComplianceResponse = {
   }
 }
 
+export type TestOneOneConnectionRequest = {
+  merchant_uuid: string
+  password: string
+}
+
+export type TestOneOneConnectionResponse = {
+  success: boolean
+  message: string
+}
+
 export type SystemTaskStatus = 'pending' | 'running' | 'succeeded' | 'failed'
 
 export type SystemTask<
@@ -310,6 +320,17 @@ export type BillingSettings = {
   AntomCurrency: string
   AntomUnitPrice: number
   AntomMinTopUp: number
+  OneOneMerchantUUID: string
+  OneOneGameName: string
+  OneOnePasswordSecret: string
+  OneOneSecret: string
+  OneOneBaseURL: string
+  OneOnePaymentChannel: string
+  OneOneCountry: string
+  OneOneCurrency: string
+  OneOneUnitPrice: number
+  OneOneMinTopUp: number
+  OneOneRail: string
   WaffoEnabled: boolean
   WaffoApiKey: string
   WaffoPrivateKey: string
