@@ -4,11 +4,8 @@
 
 # Oneroute
 
-**AI API 网关 / 多供应商聚合代理**
+**AI API 网关 / 一个专业的多供应商聚合代理平台
 
-基于开源项目 [New API](https://github.com/QuantumNous/new-api)（AGPL-3.0）二次开发的独立部署版本
-
-</div>
 
 ---
 
@@ -98,4 +95,4 @@ web/default/ 前端（React 19 + TanStack Router）
 
 ## 开源协议
 
-本项目基于 [New API](https://github.com/QuantumNous/new-api) 二次开发，遵循其原始协议 **AGPL-3.0**，详见 [LICENSE](./LICENSE)。感谢 New API 及其上游 [one-api](https://github.com/songquanpeng/one-api) 项目的所有贡献者。
+本项目遵循开源项目的原始协议 **AGPL-3.0**，详见 [LICENSE](./LICENSE)。感谢项目的所有贡献者。

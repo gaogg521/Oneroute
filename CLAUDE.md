@@ -1,166 +1,152 @@
-# CLAUDE.md — Project Conventions for new-api
+# CLAUDE.md — 项目开发规范文档
+## 会话启动前置要求 — 务必先阅读 `CONTEXT.md`
+每次开启新会话（包括断线重连、切换客户端、更换模型后），**必须完整读取项目根目录的 [`CONTEXT.md`](./CONTEXT.md)**。
+该文件是实时更新的工作进度日志，记录当前待办任务、进行中的方案、遗留踩坑点。
+本 `CLAUDE.md` 存放**永久固定项目开发规范**；`CONTEXT.md` 存放**实时项目运行状态**。两份文档均具备最高权威性，二者内容不可出现逻辑冲突。
+完成一个开发阶段后，需在 `CONTEXT.md` 末尾追加一行进度小结，保证下次会话可无缝接续工作。
 
-## Session Bootstrap — READ `CONTEXT.md` FIRST
+## 项目概述
+本项目是基于 Go 开发的 AI 接口网关/中转代理服务。
+统一封装对接 40+ 家上游大模型厂商（OpenAI、Claude、Gemini、Azure、AWS Bedrock 等），对外提供标准化统一接口；配套完整用户管理、计费系统、限流控制、后台管理面板功能。
 
-Before doing any work in a new session (including after disconnects, client switches, or model changes), **read the root-level [`CONTEXT.md`](./CONTEXT.md) in full**. It is the rolling, up-to-date log of current work progress, pending tasks, in-flight decisions, and gotchas. This `CLAUDE.md` holds the *permanent* project rules; `CONTEXT.md` holds the *current* project state. Both are authoritative for their respective scope — do not let them drift out of sync. After finishing a development phase, append a one-line progress summary to `CONTEXT.md` so the next session can resume seamlessly.
+## 技术栈
+- **后端**：Go 1.22+、Gin Web 框架、GORM v2 数据库ORM
+- **前端**：React 19、TypeScript、Rsbuild、Base UI、Tailwind CSS
+- **数据库**：同时兼容 SQLite、MySQL、PostgreSQL 三种数据库
+- **缓存**：Redis（go-redis）+ 进程内存缓存
+- **身份认证**：JWT、WebAuthn 通行密钥、OAuth（GitHub / Discord / OIDC 等标准）
+- **前端包管理器**：优先使用 Bun，不推荐 npm/yarn/pnpm
 
-## Overview
-
-This is an AI API gateway/proxy built with Go. It aggregates 40+ upstream AI providers (OpenAI, Claude, Gemini, Azure, AWS Bedrock, etc.) behind a unified API, with user management, billing, rate limiting, and an admin dashboard.
-
-## Tech Stack
-
-- **Backend**: Go 1.22+, Gin web framework, GORM v2 ORM
-- **Frontend**: React 19, TypeScript, Rsbuild, Base UI, Tailwind CSS
-- **Databases**: SQLite, MySQL, PostgreSQL (all three must be supported)
-- **Cache**: Redis (go-redis) + in-memory cache
-- **Auth**: JWT, WebAuthn/Passkeys, OAuth (GitHub, Discord, OIDC, etc.)
-- **Frontend package manager**: Bun (preferred over npm/yarn/pnpm)
-
-## Architecture
-
-Layered architecture: Router -> Controller -> Service -> Model
-
+## 分层架构
+标准分层：路由层 → 控制器层 → 服务层 → 数据模型层
 ```
-router/        — HTTP routing (API, relay, dashboard, web)
-controller/    — Request handlers
-service/       — Business logic
-model/         — Data models and DB access (GORM)
-relay/         — AI API relay/proxy with provider adapters
-  relay/channel/ — Provider-specific adapters (openai/, claude/, gemini/, aws/, etc.)
-middleware/    — Auth, rate limiting, CORS, logging, distribution
-setting/       — Configuration management (ratio, model, operation, system, performance)
-common/        — Shared utilities (JSON, crypto, Redis, env, rate-limit, etc.)
-dto/           — Data transfer objects (request/response structs)
-constant/      — Constants (API types, channel types, context keys)
-types/         — Type definitions (relay formats, file sources, errors)
-i18n/          — Backend internationalization (go-i18n, en/zh)
-oauth/         — OAuth provider implementations
-pkg/           — Internal packages (cachex, ionet)
-web/             — Frontend themes container
- web/default/   — Default frontend (React 19, Rsbuild, Base UI, Tailwind)
-  web/classic/   — Classic frontend (React 18, Vite, Semi Design)
-  web/default/src/i18n/ — Frontend internationalization (i18next, zh/en/fr/ru/ja/vi)
+router/        HTTP路由定义（接口中转、后台面板、网页静态路由）
+controller/    请求处理器
+service/       核心业务逻辑
+model/         数据模型与数据库操作（GORM）
+relay/         AI接口中转代理，内置各厂商适配器
+  relay/channel/ 各模型厂商专属适配器（openai/、claude/、gemini/、aws/ 等）
+middleware/    中间件：鉴权、限流、跨域、日志、负载分发
+setting/       全局配置管理（计费比例、模型配置、运营参数、系统性能配置）
+common/        通用工具库（JSON序列化、加密、Redis、环境变量、限流工具等）
+dto/           数据传输结构体（请求/响应入出参）
+constant/      全局常量（接口类型、渠道类型、上下文标识）
+types/         类型定义（中转消息格式、文件源、自定义错误）
+i18n/          后端国际化（go-i18n，中英文）
+oauth/         OAuth第三方登录实现
+pkg/           内部封装工具包（缓存工具 cachex、网络工具 ionet）
+web/             前端页面容器目录
+ web/default/   默认新版前端（React19、Rsbuild、Base UI、Tailwind）
+  web/classic/  经典旧版前端（React18、Vite、Semi Design）
+  web/default/src/i18n/ 前端国际化（i18next，支持中英法俄日越）
 ```
 
-## Internationalization (i18n)
+## 国际化 i18n 规范
+### 后端国际化（`i18n/` 目录）
+- 依赖库：`nicksnyder/go-i18n/v2`
+- 支持语言：英文、中文
 
-### Backend (`i18n/`)
-- Library: `nicksnyder/go-i18n/v2`
-- Languages: en, zh
+### 前端国际化（`web/default/src/i18n/`）
+- 依赖库：`i18next` + `react-i18next` + `i18next-browser-languagedetector`
+- 语言优先级：英文（基准）、中文（兜底）、法语、俄语、日语、越南语
+- 翻译文件路径：`web/default/src/i18n/locales/{语言标识}.json`
+  文件为扁平JSON结构，键名统一使用英文原文文案
+- 组件使用方式：调用 `useTranslation()` 钩子，通过 `t('英文键名')` 获取翻译文本
+- 命令行工具：进入 `web/default/` 目录执行 `bun run i18n:sync` 同步翻译词条
 
-### Frontend (`web/default/src/i18n/`)
-- Library: `i18next` + `react-i18next` + `i18next-browser-languagedetector`
-- Languages: en (base), zh (fallback), fr, ru, ja, vi
-- Translation files: `web/default/src/i18n/locales/{lang}.json` — flat JSON, keys are English source strings
-- Usage: `useTranslation()` hook, call `t('English key')` in components
-- CLI tools: `bun run i18n:sync` (from `web/default/`)
+## 强制开发规则
+### 规则1：JSON序列化 — 统一使用 `common/json.go`
+所有JSON序列化、反序列化操作**必须**调用 `common/json.go` 封装工具函数，禁止业务代码直接引入、调用标准库 `encoding/json`：
+- `common.Marshal(v any) ([]byte, error)` 序列化结构体
+- `common.Unmarshal(data []byte, v any) error` 字节数组反序列化
+- `common.UnmarshalJsonStr(data string, v any) error` 字符串反序列化
+- `common.DecodeJson(reader io.Reader, v any) error` 数据流反序列化
+- `common.GetJsonType(data json.RawMessage) string` 获取JSON数据类型
 
-## Rules
+补充说明：代码中可以引用 `encoding/json` 提供的 `json.RawMessage`、`json.Number` 等类型定义，但实际编解码逻辑必须走common封装方法。
+封装层统一处理序列化逻辑，后续可无缝切换更高性能JSON库，保证全项目行为一致。
 
-### Rule 1: JSON Package — Use `common/json.go`
+### 规则2：数据库兼容 — 同时兼容 SQLite / MySQL ≥5.7.8 / PostgreSQL ≥9.6
+所有数据库相关代码必须同时兼容三种数据库，不能出现数据库专属语法。
+#### 优先使用GORM封装能力
+优先调用GORM内置方法（Create、Find、Where、Updates等），尽量避免手写原生SQL；主键交由GORM自动生成，禁止直接写 `AUTO_INCREMENT` / `SERIAL` 数据库自增语法。
 
-All JSON marshal/unmarshal operations MUST use the wrapper functions in `common/json.go`:
+#### 必须手写原生SQL时的兼容处理
+1. 字段引号区分：PostgreSQL 使用 `"字段名"`，MySQL/SQLite 使用 `` `字段名` ``
+2. 关键字字段：`model/main.go` 提供 `commonGroupCol`、`commonKeyCol` 变量，用于 `group`、`key` 这类保留字字段
+3. 布尔值区分：PostgreSQL 识别 `true/false`，MySQL/SQLite 使用 `1/0`，统一调用 `commonTrueVal` / `commonFalseVal`
+4. 数据库分支判断：
+   使用 `common.UsingMainDatabase(common.DatabaseTypeX)` 判断业务主库；
+   使用 `common.UsingLogDatabase(common.DatabaseTypeX)` 判断日志库（日志库现已支持ClickHouse）；
+   废弃旧全局变量 `common.UsingPostgreSQL` / `common.UsingMySQL` / `common.UsingSQLite` / `common.LogSqlType`，禁止继续使用。
 
-- `common.Marshal(v any) ([]byte, error)`
-- `common.Unmarshal(data []byte, v any) error`
-- `common.UnmarshalJsonStr(data string, v any) error`
-- `common.DecodeJson(reader io.Reader, v any) error`
-- `common.GetJsonType(data json.RawMessage) string`
+#### 禁止使用无兼容方案的数据库专属语法
+- MySQL专属函数（如 `GROUP_CONCAT`），必须配套PostgreSQL等价函数 `STRING_AGG` 做兼容分支
+- PostgreSQL专属操作符（`@>`、`?`、JSONB相关运算符）
+- SQLite 不支持 `ALTER COLUMN` 修改字段，只能通过新增字段方案迂回实现
+- 数据库专属字段类型，JSON存储统一使用 `TEXT`，禁止直接使用 `JSONB`
 
-Do NOT directly import or call `encoding/json` in business code. These wrappers exist for consistency and future extensibility (e.g., swapping to a faster JSON library).
+#### 数据库迁移文件要求
+所有迁移脚本必须在三种数据库均可正常执行；SQLite修改字段只能使用 `ALTER TABLE ... ADD COLUMN` 新增字段，参考 `model/main.go` 提供的标准写法。
 
-Note: `json.RawMessage`, `json.Number`, and other type definitions from `encoding/json` may still be referenced as types, but actual marshal/unmarshal calls must go through `common.*`.
+### 规则3：前端工程 — 优先使用 Bun
+前端目录 `web/default/` 统一使用 Bun 作为包管理器与脚本执行工具：
+- `bun install` 安装依赖
+- `bun run dev` 启动本地开发服务
+- `bun run build` 打包生产环境代码
+- `bun run i18n:*` 国际化词条同步工具
 
-### Rule 2: Database Compatibility — SQLite, MySQL >= 5.7.8, PostgreSQL >= 9.6
+### 规则4：新增模型渠道 — StreamOptions 流式配置兼容
+新增厂商中转渠道适配器时：
+1. 确认该厂商接口是否支持 `StreamOptions` 流式参数配置
+2. 若支持，将渠道标识加入 `streamSupportedChannels` 支持列表
 
-All database code MUST be fully compatible with all three databases simultaneously.
+### 规则6：上游中转请求DTO — 保留显式零值
+用于接收客户端JSON、再转发给上游厂商的请求结构体（中转转换链路专用），必须遵循以下规范：
+1. 可选基础类型字段**必须使用指针类型 + omitempty标签**（`*int`、`*uint`、`*float64`、`*bool`），禁止非指针基础类型
+2. 语义约束：
+   - 客户端JSON不传该字段 → 指针为nil → 序列化时自动省略该参数
+   - 客户端显式传入0/false零值 → 指针非nil → 必须完整转发给上游厂商
+3. 禁止给可选参数使用非指针基础类型+omitempty：原生零值（0、0.0、false）会在序列化时被自动丢弃，造成上游参数缺失。
 
-**Use GORM abstractions:**
-- Prefer GORM methods (`Create`, `Find`, `Where`, `Updates`, etc.) over raw SQL.
-- Let GORM handle primary key generation — do not use `AUTO_INCREMENT` or `SERIAL` directly.
+### 规则7：计费表达式系统 — 修改前必读 `pkg/billingexpr/expr.md`
+开发阶梯计费、动态表达式计价相关功能时，**必须先完整阅读 `pkg/billingexpr/expr.md`**。
+文档包含整套计费系统设计思路、表达式语法（内置变量、函数、示例）、完整架构流程（编辑器→存储→预扣费→结算→日志展示）、Token归一化规则（自动剔除提示词/输出标记）、配额换算、表达式版本管理。
+所有计费表达式相关代码修改，必须严格遵循文档内标准写法。
 
-**When raw SQL is unavoidable:**
-- Column quoting differs: PostgreSQL uses `"column"`, MySQL/SQLite uses `` `column` ``.
-- Use `commonGroupCol`, `commonKeyCol` variables from `model/main.go` for reserved-word columns like `group` and `key`.
-- Boolean values differ: PostgreSQL uses `true`/`false`, MySQL/SQLite uses `1`/`0`. Use `commonTrueVal`/`commonFalseVal`.
-- Use `common.UsingMainDatabase(common.DatabaseTypeX)` for primary-database branches and `common.UsingLogDatabase(common.DatabaseTypeX)` for log-database branches (log DB can now also be ClickHouse). The old `common.UsingPostgreSQL`/`common.UsingSQLite`/`common.UsingMySQL`/`common.LogSqlType` globals no longer exist.
+### 规则8：Pull Request 提交流程 — AI生成代码需主动标注
+提交合并请求时：
+1. 先核对当前Git提交用户（`git config user.name` / `git config user.email`），对比仓库历史核心开发人员（git log高频作者），禁止修改Git账号配置。
+2. 若当前提交用户并非仓库原生核心开发，需在PR正文明确说明代码由AI生成/AI辅助编写。
+3. 必须使用仓库内置PR模板：`.github/PULL_REQUEST_TEMPLATE.md`，完整保留模板结构，填充对应模块内容，禁止直接删除模板自定义格式。
 
-**Forbidden without cross-DB fallback:**
-- MySQL-only functions (e.g., `GROUP_CONCAT` without PostgreSQL `STRING_AGG` equivalent)
-- PostgreSQL-only operators (e.g., `@>`, `?`, `JSONB` operators)
-- `ALTER COLUMN` in SQLite (unsupported — use column-add workaround)
-- Database-specific column types without fallback — use `TEXT` instead of `JSONB` for JSON storage
+### 规则9：上游代码同步规范（远端origin = QuantumNous/new-api）
+`origin` 为项目官方上游仓库，并非派生分支远端。将上游main分支代码合并至本派生仓库时，严格按以下四条优先级执行：
+1. **保留本地 `CLAUDE.md` 文件**：绝不直接覆盖上游版本，本文件记录派生仓库专属开发规范，包含本条同步规则。
+2. **不可移除本地新增功能**：团队管理 `/team`、新版企业团队 `/teamv3` & `/admin-teamv3`、蚂蚁支付网关、文档中心 `/docs`、首页改版、模型价格可视化编辑器保存按钮修复等自研功能必须保留。
+   若上游完整重写冲突文件，以上游代码为基底，再手动叠加本地自研功能，不可直接二选一覆盖。
+3. **不覆盖本地专属文档/数据**：`CONTEXT.md` 为本仓库独有文件（上游不跟踪，不会产生冲突），合并流程中禁止丢弃该文件及其他项目专属文档。
+4. **其余上游新增功能、Bug修复默认全量接纳**：不能因为文件存在本地定制内容就直接全盘舍弃上游更新，需手动调和冲突，而非简单选择「我方版本」。
 
-**Migrations:**
-- Ensure all migrations work on all three databases.
-- For SQLite, use `ALTER TABLE ... ADD COLUMN` instead of `ALTER COLUMN` (see `model/main.go` for patterns).
+#### 合并完成后校验项（必须全部通过才算完成）
+1. 后端编译：`go build -o new-api.exe .` 无编译报错
+2. 前端构建：进入 `web/default`，执行 `bun run typecheck` 类型校验、`bun run build` 打包，无报错；路由文件 `web/default/src/routeTree.gen.ts` 通过打包自动生成，禁止手动合并修改
+3. 全局检索废弃API：检索项目内所有 `common.UsingPostgreSQL` / `common.UsingMySQL` / `common.UsingSQLite` / `common.LogSqlType`，此类旧全局变量已重构，检索到残留代码需全部替换为新接口
+4. 国际化JSON冲突处理：`web/default/src/i18n/locales/*.json` 翻译文件采用三向合并，合并所有语言词条，不直接覆盖任意一方；合并完成执行 `bun run i18n:sync` 标准化文件格式
+5. 浏览器全功能冒烟测试（管理员账号登录）：首页、团队管理 `/team`、新版团队 `/teamv3`、后台团队管理 `/admin-teamv3`、文档中心 `/docs`、计费设置-支付渠道（蚂蚁支付Tab与开关）、模型价格编辑器；同时切换至少一种非中文语言页面验证正常。
 
-### Rule 3: Frontend — Prefer Bun
-
-Use `bun` as the preferred package manager and script runner for the frontend (`web/default/` directory):
-- `bun install` for dependency installation
-- `bun run dev` for development server
-- `bun run build` for production build
-- `bun run i18n:*` for i18n tooling
-
-### Rule 4: New Channel StreamOptions Support
-
-When implementing a new channel:
-- Confirm whether the provider supports `StreamOptions`.
-- If supported, add the channel to `streamSupportedChannels`.
-
-### Rule 6: Upstream Relay Request DTOs — Preserve Explicit Zero Values
-
-For request structs that are parsed from client JSON and then re-marshaled to upstream providers (especially relay/convert paths):
-
-- Optional scalar fields MUST use pointer types with `omitempty` (e.g. `*int`, `*uint`, `*float64`, `*bool`), not non-pointer scalars.
-- Semantics MUST be:
-  - field absent in client JSON => `nil` => omitted on marshal;
-  - field explicitly set to zero/false => non-`nil` pointer => must still be sent upstream.
-- Avoid using non-pointer scalars with `omitempty` for optional request parameters, because zero values (`0`, `0.0`, `false`) will be silently dropped during marshal.
-
-### Rule 7: Billing Expression System — Read `pkg/billingexpr/expr.md`
-
-When working on tiered/dynamic billing (expression-based pricing), you MUST read `pkg/billingexpr/expr.md` first. It documents the design philosophy, expression language (variables, functions, examples), full system architecture (editor → storage → pre-consume → settlement → log display), token normalization rules (`p`/`c` auto-exclusion), quota conversion, and expression versioning. All code changes to the billing expression system must follow the patterns described in that document.
-
-### Rule 8: Pull Requests — Identify AI-Generated Contributions When Appropriate
-
-When creating a pull request:
-
-- First compare the current git user (`git config user.name` / `git config user.email`) with the repository's historical core developers (for example, the recurring top authors in `git log`). Do not change git config.
-- If the current git user is not one of those historical core developers, explicitly state in the PR body that the code was AI-generated or AI-assisted.
-- Always use the repository PR template at `.github/PULL_REQUEST_TEMPLATE.md` when drafting the PR title/body. Preserve the template structure and fill in the relevant sections instead of replacing it with an ad hoc format.
-
-### Rule 9: Syncing with Upstream (`origin` = QuantumNous/new-api)
-
-`origin` is the real upstream repo, not a fork remote. When merging new upstream commits (`git merge origin/main`) into this fork, follow these 4 principles in order:
-
-1. **Keep the local `CLAUDE.md` as-is.** Never adopt upstream's version of this file — it documents this fork's own conventions, including this rule.
-2. **Do not break locally-added features** (team management `/team`, enterprise team `/teamv3` + `/admin-teamv3`, Antom payment gateway, docs center `/docs`, home page redesign, model-pricing visual-editor Save-button fix, etc.). When a conflicting file was rewritten upstream, take upstream's version as the base and re-apply the local feature on top of it — don't just pick one side wholesale.
-3. **Do not overwrite existing local data or docs.** `CONTEXT.md` is local-only (not tracked upstream, so it never conflicts) — never let a merge step discard it or other project-specific documentation.
-4. **Everything else — new features and bug fixes — should be accepted from upstream by default.** Don't reject upstream changes just because they touch a file we've also customized; reconcile them instead of picking "ours" wholesale.
-
-**After merging, verify before calling it done:**
-- `go build -o new-api.exe .` — zero errors
-- `cd web/default && bun run typecheck && bun run build` — zero errors (regenerate `web/default/src/routeTree.gen.ts` via the build rather than hand-merging it)
-- `grep -rln "common\.UsingPostgreSQL\|common\.UsingMySQL\|common\.UsingSQLite\|common\.LogSqlType"` across the repo — these globals were renamed to `common.UsingMainDatabase(...)` / `common.UsingLogDatabase(...)`; any hit is a stale reference from an auto-merged hunk that needs updating
-- i18n locale JSON conflicts (`web/default/src/i18n/locales/*.json`): 3-way merge by key (union, don't pick one side), then run `bun run i18n:sync`
-- Functional smoke test in a browser (logged in as an admin): home page, `/team`, `/teamv3`, `/admin-teamv3`, `/docs`, `/system-settings/billing/payment` (Antom tab + enabled toggle), `/system-settings/billing/model-pricing`, and at least one non-Chinese locale
-
-**Playbook (the workflow that worked well for a 128-commit sync):**
-
-1. **Scope the conflict before committing to anything.** Don't just run `git merge` and hope. First get a true picture:
-   - If there's uncommitted work, snapshot it non-destructively with `git stash create` (this returns a commit hash *without* touching the working tree or the index — safe to run anytime).
-   - Run `git merge-tree --write-tree <snapshot-or-HEAD> origin/main` (git ≥2.38). It prints every conflicting file and an `Auto-merging`/`CONFLICT` line per path, with zero side effects. This tells you the real conflict count and file list before you've committed to anything, so you can plan instead of discovering scope mid-merge.
-   - For each conflict candidate, compare diff sizes on both sides — `git diff <merge-base> <ours>` vs `git diff <merge-base> origin/main` for that path. A file where upstream changed 5,000 lines and we changed 5 is a different problem (take theirs, re-apply our 5 lines) than a file where both sides changed ~50 lines (real line-level reconciliation).
-2. **Commit uncommitted local work first**, excluding stray build/log artifacts, so the merge has a clean, recoverable starting point and nothing can be lost mid-merge.
-3. **Do the merge on a throwaway branch**, not `main`. Only fast-forward/merge into `main` after the full verification pass below succeeds.
-4. **Resolve conflicts by category** (see the table of examples in this rule's history / recent merge commits for concrete instances):
-   - Docs/config we own → `git checkout --ours -- <path>`.
-   - Generated files → `git checkout --theirs -- <path>` as a placeholder, then regenerate for real via the build.
-   - Comparable-size diffs both sides → open the file, resolve conflict markers by hand, keep both sides' intent.
-   - Upstream rewrote the file, we made a small patch → `git checkout --theirs -- <path>` first, then re-read our pre-merge diff (`git diff <merge-base> <our-checkpoint-commit> -- <path>`) and manually re-apply that same *intent* on top of the new structure (upstream may have moved things into tabs, renamed a helper, split a component — adapt, don't paste blindly).
-   - Large additive flat dictionaries (i18n locale JSON) → don't hand-edit conflict markers. Write a short throwaway Node script that reads base/ours/theirs via `git show <rev>:<path>`, unions the keys, prefers whichever side actually changed a key (both-sides-changed keys are rare for pure translation additions — log them for a manual look rather than guessing silently), and writes the merged JSON. Then run the project's own `i18n:sync` tool to normalize.
-5. **Don't try to manually enumerate every renamed symbol.** Spot-check a couple of files with the old API name to gauge blast radius, but the real safety net is `go build` / `bun run typecheck` after all conflicts are resolved — the compiler finds every stale reference precisely. Fix what it reports, rebuild, repeat until clean.
-6. **Verify functionally in a real browser session before landing on `main`**, not just "it compiles." A clean build proves the code is well-typed, not that the feature you were protecting still renders/works.
+#### 上游合并标准工作流（适用于大批量提交同步）
+1. **合并前先评估冲突范围**，不要直接执行git merge
+   - 存在未提交代码时，使用 `git stash create` 快照备份（仅生成提交哈希，不改动工作区与暂存区，随时可执行）
+   - 使用 `git merge-tree --write-tree <当前快照/HEAD> origin/main`（Git版本≥2.38），无副作用输出全部冲突文件，提前预估合并工作量
+   - 对比冲突文件双方修改行数：上游改动5000行、本地仅改动5行 → 以上游文件为基底，重新叠加本地5行逻辑；双方均改动50行左右 → 逐行手动调和冲突标记
+2. **先提交本地未完成代码**，剔除构建产物、日志缓存等垃圾文件，保证合并前工作区干净，避免合并丢失本地代码
+3. **新建临时分支执行合并**，禁止直接在main主分支合并；全部校验通过后，再合并至main分支
+4. **按分类处理冲突**
+   - 自有文档/配置文件：直接保留本地版本 `git checkout --ours -- 文件路径`
+   - 自动生成文件：先使用上游版本占位，再执行构建命令重新生成
+   - 双方改动行数接近：打开文件手动调和冲突标记，保留两边业务逻辑
+   - 上游完整重写文件、本地仅少量补丁：先拉取上游完整文件，再对比合并前本地diff，手动适配原有业务逻辑（上游可能重构组件、拆分函数、重命名变量，禁止无脑粘贴旧代码）
+   - 大批量扁平化字典（国际化JSON）：不手动处理冲突标记，编写临时Node脚本读取三个版本（基准/本地/上游）合并所有键名；两边同时修改的词条记录日志人工核对，合并完成执行项目i18n同步工具标准化
+5. **不手动全局检索替换所有重命名变量**，编译校验是最可靠手段：冲突解决后执行 `go build` / `bun run typecheck`，编译器会精准定位所有废弃引用，循环修复至无报错
+6. **上线main分支前必须浏览器完整功能测试**，仅编译通过不代表业务功能正常，需验证所有自研页面、计费、中转功能可正常渲染、调用。

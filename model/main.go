@@ -17,6 +17,20 @@ import (
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+)
+
+// gormLogger suppresses noisy "record not found" traces for expected lookups
+// (e.g. checking whether a user has 2FA/passkey configured) while still
+// logging real errors and slow queries.
+var gormLogger = logger.New(
+	log.New(os.Stdout, "\r\n", log.LstdFlags),
+	logger.Config{
+		SlowThreshold:             200 * time.Millisecond,
+		LogLevel:                  logger.Warn,
+		IgnoreRecordNotFoundError: true,
+		Colorful:                  true,
+	},
 )
 
 var commonGroupCol string
@@ -134,6 +148,7 @@ func chooseDB(envName string, isLog bool) (*gorm.DB, common.DatabaseType, error)
 			common.SysLog("using ClickHouse as log database")
 			db, err := gorm.Open(clickhouse.Open(normalizeClickHouseDSN(dsn)), &gorm.Config{
 				PrepareStmt: false,
+				Logger:      gormLogger,
 			})
 			return db, common.DatabaseTypeClickHouse, err
 		}
@@ -145,6 +160,7 @@ func chooseDB(envName string, isLog bool) (*gorm.DB, common.DatabaseType, error)
 				PreferSimpleProtocol: true, // disables implicit prepared statement usage
 			}), &gorm.Config{
 				PrepareStmt: true, // precompile SQL
+				Logger:      gormLogger,
 			})
 			return db, common.DatabaseTypePostgreSQL, err
 		}
@@ -152,6 +168,7 @@ func chooseDB(envName string, isLog bool) (*gorm.DB, common.DatabaseType, error)
 			common.SysLog("SQL_DSN not set, using SQLite as database")
 			db, err := gorm.Open(sqlite.Open(common.SQLitePath), &gorm.Config{
 				PrepareStmt: true, // precompile SQL
+				Logger:      gormLogger,
 			})
 			return db, common.DatabaseTypeSQLite, err
 		}
@@ -167,6 +184,7 @@ func chooseDB(envName string, isLog bool) (*gorm.DB, common.DatabaseType, error)
 		}
 		db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
 			PrepareStmt: true, // precompile SQL
+			Logger:      gormLogger,
 		})
 		return db, common.DatabaseTypeMySQL, err
 	}
@@ -174,6 +192,7 @@ func chooseDB(envName string, isLog bool) (*gorm.DB, common.DatabaseType, error)
 	common.SysLog("SQL_DSN not set, using SQLite as database")
 	db, err := gorm.Open(sqlite.Open(common.SQLitePath), &gorm.Config{
 		PrepareStmt: true, // precompile SQL
+		Logger:      gormLogger,
 	})
 	return db, common.DatabaseTypeSQLite, err
 }
