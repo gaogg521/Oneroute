@@ -23,6 +23,11 @@ import (
 // the request URL and the signature content).
 const antomPayPath = "/ams/api/v1/payments/pay"
 
+// antomInquiryPath is the Antom inquiryPayment API resource path, confirmed
+// against https://docs.antom.com/ac/ams/paymentri_online (POST /v1/payments/inquiryPayment,
+// mounted under the same /ams/api prefix as the pay endpoint).
+const antomInquiryPath = "/ams/api/v1/payments/inquiryPayment"
+
 var antomHTTPClient = &http.Client{Timeout: 20 * time.Second}
 
 // AntomPayRequest is the client payload for initiating an Antom (Alipay Global) topup.
@@ -325,5 +330,110 @@ func antomNotifyAck(c *gin.Context) {
 			"resultStatus":  "S",
 			"resultMessage": "success",
 		},
+	})
+}
+
+// TestAntomConnectionRequest lets the admin test unsaved credentials
+// directly, without first persisting them via /api/option/.
+type TestAntomConnectionRequest struct {
+	ClientId   string `json:"client_id"`
+	PrivateKey string `json:"private_key"`
+	Gateway    string `json:"gateway"`
+}
+
+type antomInquiryResponse struct {
+	Result struct {
+		ResultStatus  string `json:"resultStatus"`
+		ResultCode    string `json:"resultCode"`
+		ResultMessage string `json:"resultMessage"`
+	} `json:"result"`
+}
+
+// TestAntomConnection calls inquiryPayment with a random, guaranteed-nonexistent
+// paymentRequestId. Antom validates the signature/keys before ever looking up
+// the order, so a well-formed ORDER_NOT_EXIST response proves the credentials
+// are valid without creating or touching any real payment; any other result
+// code (e.g. KEY_NOT_FOUND, PARAM_ILLEGAL) is surfaced verbatim.
+func TestAntomConnection(c *gin.Context) {
+	var req TestAntomConnectionRequest
+	_ = c.ShouldBindJSON(&req)
+
+	clientId := strings.TrimSpace(req.ClientId)
+	if clientId == "" {
+		clientId = setting.AntomClientId
+	}
+	privateKey := strings.TrimSpace(req.PrivateKey)
+	if privateKey == "" {
+		privateKey = setting.AntomPrivateKey
+	}
+	gateway := strings.TrimSpace(req.Gateway)
+	if gateway == "" {
+		gateway = setting.AntomGateway
+	}
+
+	if clientId == "" || privateKey == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "请先填写 Client ID 和商户私钥",
+		})
+		return
+	}
+
+	probeId := "probe_" + randstr.String(24)
+	bodyBytes, err := common.Marshal(map[string]string{"paymentRequestId": probeId})
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	body := string(bodyBytes)
+
+	timestamp := strconv.FormatInt(time.Now().UnixMilli(), 10)
+	sig, err := signAntom(antomInquiryPath, clientId, timestamp, privateKey, body)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+
+	endpoint := strings.TrimRight(gateway, "/") + antomInquiryPath
+	httpReq, err := http.NewRequest(http.MethodPost, endpoint, strings.NewReader(body))
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Client-Id", clientId)
+	httpReq.Header.Set("Request-Time", timestamp)
+	httpReq.Header.Set("Signature", fmt.Sprintf("algorithm=RSA256, keyVersion=1, signature=%s", sig))
+
+	resp, err := antomHTTPClient.Do(httpReq)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "请求 Antom 失败: " + err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+
+	respBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "读取 Antom 响应失败: " + err.Error()})
+		return
+	}
+
+	var parsed antomInquiryResponse
+	if err := common.Unmarshal(respBytes, &parsed); err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": fmt.Sprintf("解析 Antom 响应失败: %s (body=%s)", err.Error(), string(respBytes)),
+		})
+		return
+	}
+
+	if parsed.Result.ResultCode == "ORDER_NOT_EXIST" {
+		c.JSON(http.StatusOK, gin.H{"success": true, "message": "连接成功，凭证有效"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": false,
+		"message": fmt.Sprintf("%s: %s", parsed.Result.ResultCode, parsed.Result.ResultMessage),
 	})
 }

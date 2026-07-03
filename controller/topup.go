@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -226,6 +227,57 @@ func getMinTopup() int64 {
 		minTopup = int(dMinTopup.Mul(dQuotaPerUnit).IntPart())
 	}
 	return int64(minTopup)
+}
+
+// TestEpayConnectionRequest lets the admin test an unsaved gateway address
+// directly, without first persisting it via /api/option/.
+type TestEpayConnectionRequest struct {
+	PayAddress string `json:"pay_address"`
+}
+
+// TestEpayConnection checks that the configured Epay gateway address is
+// reachable. Epay is a protocol implemented independently by many
+// third-party sites, not one fixed API — go-epay only exposes Purchase
+// (creates a real order) and Verify (needs an existing callback's params),
+// so there is no generic, harmless call that also validates EpayId/EpayKey.
+// This intentionally only proves the address responds; it does not — and
+// cannot, in general — validate the merchant ID/key pair.
+func TestEpayConnection(c *gin.Context) {
+	var req TestEpayConnectionRequest
+	_ = c.ShouldBindJSON(&req)
+
+	payAddress := strings.TrimSpace(req.PayAddress)
+	if payAddress == "" {
+		payAddress = operation_setting.PayAddress
+	}
+	if payAddress == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "请先填写 Epay 网关地址",
+		})
+		return
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	httpReq, err := http.NewRequestWithContext(c.Request.Context(), http.MethodGet, strings.TrimRight(payAddress, "/")+"/", nil)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "网关地址无法访问: " + err.Error(),
+		})
+		return
+	}
+	defer resp.Body.Close()
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": fmt.Sprintf("网关地址可达（HTTP %d）。Epay 是协议而非固定 API，此检测无法验证商户 ID/密钥是否正确，请以实际下单结果为准。", resp.StatusCode),
+	})
 }
 
 func RequestEpay(c *gin.Context) {

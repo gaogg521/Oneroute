@@ -455,3 +455,71 @@ func genCreemLink(ctx context.Context, referenceId string, product *CreemProduct
 	logger.LogInfo(ctx, fmt.Sprintf("Creem 支付链接创建成功 trade_no=%s response_id=%s checkout_url=%q", referenceId, checkoutResp.Id, checkoutResp.CheckoutUrl))
 	return checkoutResp.CheckoutUrl, nil
 }
+
+// TestCreemConnectionRequest lets the admin test an unsaved API key
+// directly, without first persisting it via /api/option/.
+type TestCreemConnectionRequest struct {
+	ApiKey string `json:"api_key"`
+}
+
+type creemErrorResponse struct {
+	Message string `json:"message"`
+}
+
+// TestCreemConnection calls GET /v1/products/search — a read-only, paginated
+// list endpoint (confirmed against https://docs.creem.io/api-reference/endpoint/search-products) —
+// using either the provided override key or the currently saved one.
+func TestCreemConnection(c *gin.Context) {
+	var req TestCreemConnectionRequest
+	_ = c.ShouldBindJSON(&req)
+
+	apiKey := req.ApiKey
+	if apiKey == "" {
+		apiKey = setting.CreemApiKey
+	}
+	if apiKey == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "请先填写 API Key",
+		})
+		return
+	}
+
+	apiUrl := "https://api.creem.io/v1/products/search?page_size=1"
+	if setting.CreemTestMode {
+		apiUrl = "https://test-api.creem.io/v1/products/search?page_size=1"
+	}
+
+	httpReq, err := http.NewRequestWithContext(c.Request.Context(), http.MethodGet, apiUrl, nil)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	httpReq.Header.Set("x-api-key", apiKey)
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "请求 Creem 失败: " + err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+
+	respBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "读取 Creem 响应失败: " + err.Error()})
+		return
+	}
+
+	if resp.StatusCode/100 != 2 {
+		message := fmt.Sprintf("Creem API http status %d", resp.StatusCode)
+		var errResp creemErrorResponse
+		if err := json.Unmarshal(respBytes, &errResp); err == nil && errResp.Message != "" {
+			message = errResp.Message
+		}
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": message})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "连接成功，API Key 有效"})
+}

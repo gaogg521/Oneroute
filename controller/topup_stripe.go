@@ -18,6 +18,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stripe/stripe-go/v81"
+	"github.com/stripe/stripe-go/v81/balance"
 	"github.com/stripe/stripe-go/v81/checkout/session"
 	"github.com/stripe/stripe-go/v81/webhook"
 	"github.com/thanhpk/randstr"
@@ -421,4 +422,50 @@ func getStripeMinTopup() int64 {
 		minTopup = minTopup * int(common.QuotaPerUnit)
 	}
 	return int64(minTopup)
+}
+
+// TestStripeConnectionRequest lets the admin test an unsaved API secret
+// directly, without first persisting it via /api/option/.
+type TestStripeConnectionRequest struct {
+	ApiSecret string `json:"api_secret"`
+}
+
+// TestStripeConnection calls Stripe's GET /v1/balance — the standard,
+// side-effect-free way to validate an API key — using either the provided
+// override secret or the currently saved one.
+func TestStripeConnection(c *gin.Context) {
+	var req TestStripeConnectionRequest
+	_ = c.ShouldBindJSON(&req)
+
+	apiSecret := strings.TrimSpace(req.ApiSecret)
+	if apiSecret == "" {
+		apiSecret = setting.StripeApiSecret
+	}
+	if apiSecret == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "请先填写 API Secret",
+		})
+		return
+	}
+
+	client := balance.Client{B: stripe.GetBackend(stripe.APIBackend), Key: apiSecret}
+	_, err := client.Get(nil)
+	if err != nil {
+		message := err.Error()
+		var stripeErr *stripe.Error
+		if errors.As(err, &stripeErr) && stripeErr.Msg != "" {
+			message = stripeErr.Msg
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": message,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "连接成功，API Secret 有效",
+	})
 }

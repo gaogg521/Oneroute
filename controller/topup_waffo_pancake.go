@@ -236,6 +236,37 @@ func ListWaffoPancakeCatalog(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "success", "data": catalog})
 }
 
+// TestWaffoPancakeConnectionRequest lets the admin test unsaved credentials
+// directly, without first persisting them via /api/option/.
+type TestWaffoPancakeConnectionRequest struct {
+	MerchantID string `json:"merchant_id"`
+	PrivateKey string `json:"private_key"`
+}
+
+// TestWaffoPancakeConnection reuses the existing catalog-listing call
+// (service.ListWaffoPancakeCatalog) purely as a credential probe — no new
+// API surface against Waffo Pancake, just the standard test-button shape.
+func TestWaffoPancakeConnection(c *gin.Context) {
+	var req TestWaffoPancakeConnectionRequest
+	_ = c.ShouldBindJSON(&req)
+
+	merchantID, privateKey := resolveWaffoPancakeAdminCreds(req.MerchantID, req.PrivateKey)
+	if merchantID == "" || privateKey == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "请先填写 Merchant ID 和私钥",
+		})
+		return
+	}
+
+	if _, err := service.ListWaffoPancakeCatalog(c.Request.Context(), merchantID, privateKey); err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "连接成功，凭证有效"})
+}
+
 type createWaffoPancakeSubscriptionProductRequest struct {
 	Name   string `json:"name"`
 	Amount string `json:"amount"`

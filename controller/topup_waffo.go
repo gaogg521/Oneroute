@@ -20,6 +20,7 @@ import (
 	waffo "github.com/waffo-com/waffo-go"
 	"github.com/waffo-com/waffo-go/config"
 	"github.com/waffo-com/waffo-go/core"
+	"github.com/waffo-com/waffo-go/types/merchant"
 	"github.com/waffo-com/waffo-go/types/order"
 )
 
@@ -428,4 +429,87 @@ func sendWaffoWebhookResponse(c *gin.Context, wh *core.WebhookHandler, success b
 	}
 	c.Header("X-SIGNATURE", sig)
 	c.Data(http.StatusOK, "application/json", []byte(body))
+}
+
+// TestWaffoConnectionRequest lets the admin test unsaved credentials
+// directly, without first persisting them via /api/option/. Blank fields
+// fall back to the currently saved (sandbox-aware) setting.
+type TestWaffoConnectionRequest struct {
+	ApiKey     string `json:"api_key"`
+	PrivateKey string `json:"private_key"`
+	PublicCert string `json:"public_cert"`
+	MerchantId string `json:"merchant_id"`
+}
+
+// TestWaffoConnection performs a read-only merchant-config inquiry — the
+// SDK's dedicated credential-check call — using either the provided
+// override credentials or the currently saved (sandbox-aware) ones.
+func TestWaffoConnection(c *gin.Context) {
+	var req TestWaffoConnectionRequest
+	_ = c.ShouldBindJSON(&req)
+
+	env := config.Sandbox
+	apiKey := strings.TrimSpace(req.ApiKey)
+	privateKey := strings.TrimSpace(req.PrivateKey)
+	publicKey := strings.TrimSpace(req.PublicCert)
+	if apiKey == "" {
+		apiKey = setting.WaffoSandboxApiKey
+	}
+	if privateKey == "" {
+		privateKey = setting.WaffoSandboxPrivateKey
+	}
+	if publicKey == "" {
+		publicKey = setting.WaffoSandboxPublicCert
+	}
+	if !setting.WaffoSandbox {
+		env = config.Production
+		if apiKey == "" {
+			apiKey = setting.WaffoApiKey
+		}
+		if privateKey == "" {
+			privateKey = setting.WaffoPrivateKey
+		}
+		if publicKey == "" {
+			publicKey = setting.WaffoPublicCert
+		}
+	}
+	merchantId := strings.TrimSpace(req.MerchantId)
+	if merchantId == "" {
+		merchantId = setting.WaffoMerchantId
+	}
+
+	if apiKey == "" || privateKey == "" || publicKey == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "请先填写 API Key、私钥和 Waffo 公钥",
+		})
+		return
+	}
+
+	builder := config.NewConfigBuilder().
+		APIKey(apiKey).
+		PrivateKey(privateKey).
+		WaffoPublicKey(publicKey).
+		Environment(env)
+	if merchantId != "" {
+		builder = builder.MerchantID(merchantId)
+	}
+	cfg, err := builder.Build()
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	sdk := waffo.New(cfg)
+
+	resp, err := sdk.MerchantConfig().Inquiry(c.Request.Context(), &merchant.InquiryMerchantConfigParams{MerchantID: merchantId}, nil)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	if !resp.IsSuccess() {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": resp.Message})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "连接成功，凭证有效"})
 }

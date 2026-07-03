@@ -55,9 +55,42 @@ export type TestOneOneConnectionRequest = {
   password: string
 }
 
-export type TestOneOneConnectionResponse = {
+/** Shared response shape for all gateway "Test Connection" endpoints. */
+export type TestConnectionResponse = {
   success: boolean
   message: string
+}
+
+export type TestOneOneConnectionResponse = TestConnectionResponse
+
+export type TestStripeConnectionRequest = {
+  api_secret: string
+}
+
+export type TestCreemConnectionRequest = {
+  api_key: string
+}
+
+export type TestAntomConnectionRequest = {
+  client_id: string
+  private_key: string
+  gateway: string
+}
+
+export type TestEpayConnectionRequest = {
+  pay_address: string
+}
+
+export type TestWaffoConnectionRequest = {
+  api_key: string
+  private_key: string
+  public_cert: string
+  merchant_id: string
+}
+
+export type TestWaffoPancakeConnectionRequest = {
+  merchant_id: string
+  private_key: string
 }
 
 export type SystemTaskStatus = 'pending' | 'running' | 'succeeded' | 'failed'

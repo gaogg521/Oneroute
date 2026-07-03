@@ -25,8 +25,15 @@ import type {
   SystemOptionsResponse,
   SystemTaskListResponse,
   SystemTaskResponse,
+  TestAntomConnectionRequest,
+  TestConnectionResponse,
+  TestCreemConnectionRequest,
+  TestEpayConnectionRequest,
   TestOneOneConnectionRequest,
   TestOneOneConnectionResponse,
+  TestStripeConnectionRequest,
+  TestWaffoConnectionRequest,
+  TestWaffoPancakeConnectionRequest,
   UpdateOptionRequest,
   UpdateOptionResponse,
   UpstreamChannelsResponse,
@@ -56,6 +63,64 @@ export async function testOneOneConnection(
 ) {
   const res = await api.post<TestOneOneConnectionResponse>(
     '/api/option/oneone/test',
+    request
+  )
+  return res.data
+}
+
+export async function testStripeConnection(
+  request: TestStripeConnectionRequest
+) {
+  const res = await api.post<TestConnectionResponse>(
+    '/api/option/stripe/test',
+    request
+  )
+  return res.data
+}
+
+export async function testCreemConnection(
+  request: TestCreemConnectionRequest
+) {
+  const res = await api.post<TestConnectionResponse>(
+    '/api/option/creem/test',
+    request
+  )
+  return res.data
+}
+
+export async function testAntomConnection(
+  request: TestAntomConnectionRequest
+) {
+  const res = await api.post<TestConnectionResponse>(
+    '/api/option/antom/test',
+    request
+  )
+  return res.data
+}
+
+export async function testEpayConnection(request: TestEpayConnectionRequest) {
+  const res = await api.post<TestConnectionResponse>(
+    '/api/option/epay/test',
+    request
+  )
+  return res.data
+}
+
+export async function testWaffoConnection(
+  request: TestWaffoConnectionRequest
+) {
+  const res = await api.post<TestConnectionResponse>(
+    '/api/option/waffo/test',
+    request
+  )
+  return res.data
+}
+
+export async function testWaffoPancakeConnection(
+  request: TestWaffoPancakeConnectionRequest
+) {
+  const res = await api.post<TestConnectionResponse>(
+    '/api/option/waffo-pancake/test',
     request
   )
   return res.data

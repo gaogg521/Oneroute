@@ -32,6 +32,9 @@ import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
 
 import { SettingsSwitchField } from '../components/settings-form-layout'
+import { TestConnectionButton } from '../components/test-connection-button'
+import { useGatewayConnectionTest } from '../hooks/use-gateway-connection-test'
+import { testWaffoConnection } from '../api'
 
 export interface WaffoSettingsValues {
   WaffoEnabled: boolean
@@ -77,6 +80,24 @@ export function WaffoSettingsSection({
   onPayMethodsChange,
 }: Props) {
   const { t } = useTranslation()
+  const waffoConnectionTest = useGatewayConnectionTest(testWaffoConnection, t)
+  const handleTestWaffoConnection = () => {
+    waffoConnectionTest.test({
+      api_key: (values.WaffoSandbox
+        ? values.WaffoSandboxApiKey
+        : values.WaffoApiKey
+      ).trim(),
+      private_key: (values.WaffoSandbox
+        ? values.WaffoSandboxPrivateKey
+        : values.WaffoPrivateKey
+      ).trim(),
+      public_cert: (values.WaffoSandbox
+        ? values.WaffoSandboxPublicCert
+        : values.WaffoPublicCert
+      ).trim(),
+      merchant_id: values.WaffoMerchantId.trim(),
+    })
+  }
   const iconFileInputRef = useRef<HTMLInputElement | null>(null)
   const [methodDialogOpen, setMethodDialogOpen] = useState(false)
   const [editingIdx, setEditingIdx] = useState(-1)
@@ -257,6 +278,13 @@ export function WaffoSettingsSection({
             />
           </div>
         </div>
+
+        <TestConnectionButton
+          onTest={handleTestWaffoConnection}
+          isPending={waffoConnectionTest.mutation.isPending}
+          result={waffoConnectionTest.result}
+          t={t}
+        />
 
         <div className='grid grid-cols-3 gap-4'>
           <div className='grid gap-1.5'>

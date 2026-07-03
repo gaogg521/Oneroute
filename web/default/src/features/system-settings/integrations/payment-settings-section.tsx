@@ -56,7 +56,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 
-import { confirmPaymentCompliance, testOneOneConnection } from '../api'
+import {
+  confirmPaymentCompliance,
+  testAntomConnection,
+  testCreemConnection,
+  testEpayConnection,
+  testOneOneConnection,
+  testStripeConnection,
+} from '../api'
 import {
   SettingsForm,
   SettingsSwitchContent,
@@ -64,6 +71,8 @@ import {
 } from '../components/settings-form-layout'
 import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
+import { TestConnectionButton } from '../components/test-connection-button'
+import { useGatewayConnectionTest } from '../hooks/use-gateway-connection-test'
 import { useUpdateOption } from '../hooks/use-update-option'
 import { safeNumberFieldProps } from '../utils/numeric-field'
 import { AmountDiscountVisualEditor } from './amount-discount-visual-editor'
@@ -425,6 +434,34 @@ export function PaymentSettingsSection({
     testOneOneConnectionMutation.mutate({
       merchant_uuid: form.getValues('OneOneMerchantUUID').trim(),
       password: form.getValues('OneOnePasswordSecret').trim(),
+    })
+  }
+
+  const stripeConnectionTest = useGatewayConnectionTest(testStripeConnection, t)
+  const creemConnectionTest = useGatewayConnectionTest(testCreemConnection, t)
+  const antomConnectionTest = useGatewayConnectionTest(testAntomConnection, t)
+  const epayConnectionTest = useGatewayConnectionTest(testEpayConnection, t)
+
+  const handleTestStripeConnection = () => {
+    stripeConnectionTest.test({
+      api_secret: form.getValues('StripeApiSecret').trim(),
+    })
+  }
+  const handleTestCreemConnection = () => {
+    creemConnectionTest.test({
+      api_key: form.getValues('CreemApiKey').trim(),
+    })
+  }
+  const handleTestAntomConnection = () => {
+    antomConnectionTest.test({
+      client_id: form.getValues('AntomClientId').trim(),
+      private_key: form.getValues('AntomPrivateKey').trim(),
+      gateway: form.getValues('AntomGateway').trim(),
+    })
+  }
+  const handleTestEpayConnection = () => {
+    epayConnectionTest.test({
+      pay_address: form.getValues('PayAddress').trim(),
     })
   }
 
@@ -1445,6 +1482,13 @@ export function PaymentSettingsSection({
                     )}
                   />
                 </div>
+
+                <TestConnectionButton
+                  onTest={handleTestEpayConnection}
+                  isPending={epayConnectionTest.mutation.isPending}
+                  result={epayConnectionTest.result}
+                  t={t}
+                />
               </div>
             </TabsContent>
 
@@ -1637,6 +1681,13 @@ export function PaymentSettingsSection({
                     )}
                   />
                 </div>
+
+                <TestConnectionButton
+                  onTest={handleTestStripeConnection}
+                  isPending={stripeConnectionTest.mutation.isPending}
+                  result={stripeConnectionTest.result}
+                  t={t}
+                />
               </div>
             </TabsContent>
 
@@ -1792,6 +1843,13 @@ export function PaymentSettingsSection({
                     </FormItem>
                   )}
                 />
+
+                <TestConnectionButton
+                  onTest={handleTestCreemConnection}
+                  isPending={creemConnectionTest.mutation.isPending}
+                  result={creemConnectionTest.result}
+                  t={t}
+                />
               </div>
             </TabsContent>
 
@@ -1914,6 +1972,13 @@ export function PaymentSettingsSection({
                       <FormMessage />
                     </FormItem>
                   )}
+                />
+
+                <TestConnectionButton
+                  onTest={handleTestAntomConnection}
+                  isPending={antomConnectionTest.mutation.isPending}
+                  result={antomConnectionTest.result}
+                  t={t}
                 />
 
                 <div className='grid gap-6 md:grid-cols-2 lg:grid-cols-4'>

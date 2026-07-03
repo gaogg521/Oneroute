@@ -33,6 +33,9 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 
+import { testWaffoPancakeConnection } from '../api'
+import { TestConnectionButton } from '../components/test-connection-button'
+import { useGatewayConnectionTest } from '../hooks/use-gateway-connection-test'
 import { removeTrailingSlash } from './utils'
 import {
   type CatalogStore,
@@ -79,6 +82,16 @@ export function WaffoPancakeSettingsSection({
   onSelectedBindingChange,
 }: Props) {
   const { t } = useTranslation()
+  const waffoPancakeConnectionTest = useGatewayConnectionTest(
+    testWaffoPancakeConnection,
+    t
+  )
+  const handleTestWaffoPancakeConnection = () => {
+    waffoPancakeConnectionTest.test({
+      merchant_id: values.WaffoPancakeMerchantID.trim(),
+      private_key: values.WaffoPancakePrivateKey.trim(),
+    })
+  }
 
   const [phase, setPhase] = React.useState<'idle' | 'verifying'>('idle')
   const [catalog, setCatalog] = React.useState<CatalogStore[]>([])
@@ -449,6 +462,13 @@ export function WaffoPancakeSettingsSection({
             )}
           </p>
         </div>
+
+        <TestConnectionButton
+          onTest={handleTestWaffoPancakeConnection}
+          isPending={waffoPancakeConnectionTest.mutation.isPending}
+          result={waffoPancakeConnectionTest.result}
+          t={t}
+        />
 
         {/*
           Binding section — split into two visually distinct paths:

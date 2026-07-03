@@ -252,6 +252,12 @@ func SetApiRouter(router *gin.Engine) {
 			optionRoute.POST("/rest_model_ratio", controller.ResetModelRatio)
 			optionRoute.POST("/migrate_console_setting", controller.MigrateConsoleSetting) // 用于迁移检测的旧键，下个版本会删除
 			optionRoute.POST("/oneone/test", controller.TestOneOneConnection)
+			optionRoute.POST("/stripe/test", controller.TestStripeConnection)
+			optionRoute.POST("/creem/test", controller.TestCreemConnection)
+			optionRoute.POST("/antom/test", controller.TestAntomConnection)
+			optionRoute.POST("/epay/test", controller.TestEpayConnection)
+			optionRoute.POST("/waffo/test", controller.TestWaffoConnection)
+			optionRoute.POST("/waffo-pancake/test", controller.TestWaffoPancakeConnection)
 			optionRoute.GET("/waffo-pancake/catalog", controller.ListWaffoPancakeCatalog)
 			optionRoute.POST("/waffo-pancake/pair", controller.CreateWaffoPancakePair)
 			optionRoute.POST("/waffo-pancake/save", controller.SaveWaffoPancake)
