@@ -153,6 +153,12 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 		claudeRequest.MaxTokens = &defaultMaxTokens
 	}
 
+	// Anthropic API does not allow both temperature and top_p simultaneously.
+	// When both are present, prefer temperature and drop top_p to avoid 400 errors.
+	if claudeRequest.Temperature != nil && claudeRequest.TopP != nil {
+		claudeRequest.TopP = nil
+	}
+
 	if baseModel, effortLevel, ok := reasoning.TrimEffortSuffix(textRequest.Model); ok && effortLevel != "" &&
 		(strings.HasPrefix(textRequest.Model, "claude-opus-4-6") ||
 			strings.HasPrefix(textRequest.Model, "claude-opus-4-7") ||

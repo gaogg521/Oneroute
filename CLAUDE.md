@@ -96,7 +96,20 @@ web/             前端页面容器目录
 - `bun run build` 打包生产环境代码
 - `bun run i18n:*` 国际化词条同步工具
 
-### 规则4：新增模型渠道 — StreamOptions 流式配置兼容
+### 规则4：部署与编译 — 服务器端编译，禁止本地交叉编译上传二进制
+
+**生产服务器**：`101.47.9.133`（Rocky Linux 9.5 x86_64），域名 `ai.oneroute.vip`，SSH 私钥 `C:\Users\allenzhao\Downloads\allen-AI中转用.pem`，用户 `root`。
+项目路径 `/opt/oneroute/`，服务管理 `systemctl restart oneroute`，日志 `journalctl -u oneroute -f`。
+
+**部署流程（必须严格遵守）**：
+1. **只上传修改的源码文件**到服务器（`scp` 单个文件或目录），**禁止**本地交叉编译后上传整个二进制（149MB 太慢，且不可持续）。
+2. 在服务器上编译：前端 `cd /opt/oneroute/web/default && ~/.bun/bin/bun install && ~/.bun/bin/bun run build`（classic 前端同理），然后后端 `cd /opt/oneroute && /usr/local/go/bin/go build -o new-api .`。
+3. 编译成功后 `systemctl restart oneroute`。
+4. 部署完成后验证：`curl -sS -m 5 -o /dev/null -w '%{http_code}' https://ai.oneroute.vip/` 应返回 200。
+
+**禁止事项**：绝对不要在本地执行 `GOOS=linux go build` 然后 scp 二进制。每次部署只传变更的源码文件。
+
+### 规则5：新增模型渠道 — StreamOptions 流式配置兼容
 新增厂商中转渠道适配器时：
 1. 确认该厂商接口是否支持 `StreamOptions` 流式参数配置
 2. 若支持，将渠道标识加入 `streamSupportedChannels` 支持列表
