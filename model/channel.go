@@ -852,6 +852,50 @@ func EditChannelByTag(tag string, newTag *string, modelMapping *string, models *
 	return nil
 }
 
+// ChannelMappingUpdate 描述对单个渠道 model_mapping / models 的一次补丁更新
+// ModelMapping 为完整的新 JSON 字符串（空字符串表示清空映射）
+// Models 为 nil 时不改动模型列表；非 nil 时整体替换为该逗号分隔列表
+type ChannelMappingUpdate struct {
+	Id           int
+	ModelMapping string
+	Models       *string
+}
+
+// BatchUpdateChannelModelMapping 逐个渠道下发不同的 model_mapping（可选同时更新 models）
+// 用于「模型别名中央管理器」：给每个渠道写入它专属的 {别名:真实上游名} 映射
+// 仿 EditChannelByTag：map 补丁更新（避免 GORM 跳过空值），models 变更时重建 abilities
+// 调用方需在批量结束后调用一次 InitChannelCache() 使路由缓存生效
+func BatchUpdateChannelModelMapping(updates []ChannelMappingUpdate) (int, error) {
+	if len(updates) == 0 {
+		return 0, nil
+	}
+	updated := 0
+	for _, u := range updates {
+		fields := map[string]interface{}{
+			"model_mapping": u.ModelMapping,
+		}
+		if u.Models != nil {
+			fields["models"] = *u.Models
+		}
+		if err := DB.Model(&Channel{}).Where("id = ?", u.Id).Updates(fields).Error; err != nil {
+			return updated, err
+		}
+		updated++
+		// models 变更会影响路由 abilities（Models × Group 笛卡尔积），需重建
+		if u.Models != nil {
+			channel, err := GetChannelById(u.Id, false)
+			if err != nil {
+				common.SysLog(fmt.Sprintf("failed to reload channel for abilities: channel_id=%d, error=%v", u.Id, err))
+				continue
+			}
+			if err := channel.UpdateAbilities(nil); err != nil {
+				common.SysLog(fmt.Sprintf("failed to update abilities: channel_id=%d, error=%v", u.Id, err))
+			}
+		}
+	}
+	return updated, nil
+}
+
 func UpdateChannelUsedQuota(id int, quota int) {
 	if common.BatchUpdateEnabled {
 		addNewRecord(BatchUpdateTypeChannelUsedQuota, id, quota)

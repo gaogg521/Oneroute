@@ -5457,5 +5457,22 @@
   },
   "Confirm Kick": "Confirm Kick",
   "Are you sure you want to remove": "Are you sure you want to remove",
-  "from your team?": "from your team?"
+  "from your team?": "from your team?",
+  "Model Aliases": "Model Aliases",
+  "Apply": "Apply",
+  "Apply all": "Apply all",
+  "Unified Alias": "Unified Alias",
+  "In effect": "In effect",
+  "Real upstream model": "Real upstream model",
+  "Enter a unified model name": "Enter a unified model name",
+  "Failed to load channels": "Failed to load channels",
+  "No alias suggestions": "No alias suggestions",
+  "No channels to update": "No channels to update",
+  "Failed to apply aliases": "Failed to apply aliases",
+  "{{count}} channels": "{{count}} channels",
+  "{{count}} in effect": "{{count}} in effect",
+  "Applied to {{count}} channels": "Applied to {{count}} channels",
+  "Unify differently-named models": "Unify differently-named models",
+  "Channels are auto-grouped by model-name similarity. Review each suggested alias, adjust the real upstream model per channel, then apply. Applying is additive — the original model names remain callable.": "Channels are auto-grouped by model-name similarity. Review each suggested alias, adjust the real upstream model per channel, then apply. Applying is additive — the original model names remain callable.",
+  "No differently-named duplicate models were found across your channels. Aliases are suggested when the same model appears under different names in two or more channels.": "No differently-named duplicate models were found across your channels. Aliases are suggested when the same model appears under different names in two or more channels."
 }

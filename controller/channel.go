@@ -865,6 +865,103 @@ func EditTagChannels(c *gin.Context) {
 	return
 }
 
+// ChannelMappingOverviewItem 模型别名管理器用的精简渠道视图（不含 key）
+type ChannelMappingOverviewItem struct {
+	Id           int    `json:"id"`
+	Name         string `json:"name"`
+	Type         int    `json:"type"`
+	Status       int    `json:"status"`
+	Group        string `json:"group"`
+	Models       string `json:"models"`
+	ModelMapping string `json:"model_mapping"`
+}
+
+// GetChannelModelMappingOverview 返回所有渠道的精简映射视图，供「模型别名中央管理器」聚类使用
+func GetChannelModelMappingOverview(c *gin.Context) {
+	channels, err := model.GetAllChannels(0, 0, true, false)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	items := make([]ChannelMappingOverviewItem, 0, len(channels))
+	for _, ch := range channels {
+		items = append(items, ChannelMappingOverviewItem{
+			Id:           ch.Id,
+			Name:         ch.Name,
+			Type:         ch.Type,
+			Status:       ch.Status,
+			Group:        ch.Group,
+			Models:       ch.Models,
+			ModelMapping: ch.GetModelMapping(),
+		})
+	}
+	common.ApiSuccess(c, items)
+}
+
+// ChannelMappingBatchItem 单个渠道的映射补丁
+type ChannelMappingBatchItem struct {
+	Id           int     `json:"id"`
+	ModelMapping string  `json:"model_mapping"`
+	Models       *string `json:"models"`
+}
+
+// ChannelMappingBatchRequest 批量下发请求体
+type ChannelMappingBatchRequest struct {
+	Updates []ChannelMappingBatchItem `json:"updates"`
+}
+
+// BatchUpdateChannelModelMapping 给多个渠道分别下发各自的 model_mapping（可选同时改 models）
+func BatchUpdateChannelModelMapping(c *gin.Context) {
+	rawBody, err := c.GetRawData()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	req := ChannelMappingBatchRequest{}
+	if err := common.Unmarshal(rawBody, &req); err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "参数错误",
+		})
+		return
+	}
+	if len(req.Updates) == 0 {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "没有需要更新的渠道",
+		})
+		return
+	}
+	modelUpdates := make([]model.ChannelMappingUpdate, 0, len(req.Updates))
+	for _, item := range req.Updates {
+		trimmed := strings.TrimSpace(item.ModelMapping)
+		if trimmed != "" && trimmed != "{}" && !json.Valid([]byte(trimmed)) {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": fmt.Sprintf("渠道 #%d 的模型映射必须是合法的 JSON 格式", item.Id),
+			})
+			return
+		}
+		modelUpdates = append(modelUpdates, model.ChannelMappingUpdate{
+			Id:           item.Id,
+			ModelMapping: trimmed,
+			Models:       item.Models,
+		})
+	}
+	updated, err := model.BatchUpdateChannelModelMapping(modelUpdates)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	model.InitChannelCache()
+	recordManageAudit(c, "channel.batch_model_mapping", map[string]interface{}{
+		"count": updated,
+	})
+	common.ApiSuccess(c, gin.H{
+		"updated": updated,
+	})
+}
+
 type ChannelBatch struct {
 	Ids []int   `json:"ids"`
 	Tag *string `json:"tag"`
