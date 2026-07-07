@@ -16,5 +16,11 @@
   "Provide this notify URL as the webhook_url when the Oneverse account is provisioned": "Provide this notify URL as the webhook_url when the Oneverse account is provisioned",
   "Used to obtain a Bearer token from /api/northbound/login": "Used to obtain a Bearer token from /api/northbound/login",
   "If another enabled gateway declares the same rail, only the cheaper one (by unit price) is shown to users.": "If another enabled gateway declares the same rail, only the cheaper one (by unit price) is shown to users.",
-  "Its rail is fixed to Alipay for cross-gateway price comparison — if another gateway also declares Alipay, only the cheaper one is shown to users.": "Its rail is fixed to Alipay for cross-gateway price comparison — if another gateway also declares Alipay, only the cheaper one is shown to users."
+  "Its rail is fixed to Alipay for cross-gateway price comparison — if another gateway also declares Alipay, only the cheaper one is shown to users.": "Its rail is fixed to Alipay for cross-gateway price comparison — if another gateway also declares Alipay, only the cheaper one is shown to users.",
+  "Failed to load channels": "Failed to load channels",
+  "No channels to update": "No channels to update",
+  "Failed to apply aliases": "Failed to apply aliases",
+  "Applied to {{count}} channels": "Applied to {{count}} channels",
+  "Channels are auto-grouped by model-name similarity. Review each suggested alias, adjust the real upstream model per channel, then apply. Applying is additive — the original model names remain callable.": "Channels are auto-grouped by model-name similarity. Review each suggested alias, adjust the real upstream model per channel, then apply. Applying is additive — the original model names remain callable.",
+  "No differently-named duplicate models were found across your channels. Aliases are suggested when the same model appears under different names in two or more channels.": "No differently-named duplicate models were found across your channels. Aliases are suggested when the same model appears under different names in two or more channels."
 }
