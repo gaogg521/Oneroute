@@ -105,5 +105,6 @@
   "Pick source channel(s) to read upstream prices, set a global markup and optional per-vendor overrides, then apply. Sell price = upstream price × (1 + markup%).": "Pick source channel(s) to read upstream prices, set a global markup and optional per-vendor overrides, then apply. Sell price = upstream price × (1 + markup%).",
   "The group ratio multiplies your LOCAL price, not the channel cost. To earn a fixed % on every model, local price must first equal cost — that is exactly what this tool sets.": "The group ratio multiplies your LOCAL price, not the channel cost. To earn a fixed % on every model, local price must first equal cost — that is exactly what this tool sets.",
   "After applying here, keep the group ratio at 1, otherwise the two markups stack (cost × markup × group ratio).": "After applying here, keep the group ratio at 1, otherwise the two markups stack (cost × markup × group ratio).",
-  "Only channels whose upstream exposes a price list return prices; other channels have nothing to mark up.": "Only channels whose upstream exposes a price list return prices; other channels have nothing to mark up."
+  "Only channels whose upstream exposes a price list return prices; other channels have nothing to mark up.": "Only channels whose upstream exposes a price list return prices; other channels have nothing to mark up.",
+  "Filter by vendor": "Filter by vendor"
 }

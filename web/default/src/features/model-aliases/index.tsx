@@ -18,22 +18,28 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Info, Loader2 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { getPricing } from '@/features/pricing/api'
 import { SectionPageLayout } from '@/components/layout'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
+import { getLobeIcon } from '@/lib/lobe-icon'
+import { cn } from '@/lib/utils'
 
 import { batchUpdateModelMapping, getChannelMappingOverview } from './api'
 import { AliasGroupCard } from './components/alias-group-card'
 import { buildAliasGroups, buildUpdatesFromGroups } from './lib/alias-grouping'
 import { modelAliasesQueryKeys } from './lib/query-keys'
-import { buildVendorIndex } from './lib/vendor-grouping'
+import { buildVendorIndex, resolveVendor } from './lib/vendor-grouping'
 import type { AliasGroup, ChannelMappingRow } from './types'
+
+const ALL = '__all__'
+const OTHER = '__other__'
 
 export function ModelAliases() {
   const { t } = useTranslation()
@@ -107,6 +113,39 @@ export function ModelAliases() {
     (g) => g.alias.trim() && g.bindings.some((b) => b.included)
   )
 
+  // 每个别名组归属的供应商（''=未归类），用于左侧过滤
+  const vendorOf = (g: AliasGroup) => resolveVendor(g.alias, vendorIndex) || OTHER
+
+  // 供应商 → 别名组，按模型广场顺序排列，未归类排最后
+  const vendorBuckets = useMemo(() => {
+    const m = new Map<string, AliasGroup[]>()
+    for (const g of groups) {
+      const v = vendorOf(g)
+      const list = m.get(v)
+      if (list) list.push(g)
+      else m.set(v, [g])
+    }
+    const ordered: Array<{ vendor: string; groups: AliasGroup[] }> = []
+    for (const v of vendorIndex.vendorOrder) {
+      if (m.has(v)) {
+        ordered.push({ vendor: v, groups: m.get(v)! })
+        m.delete(v)
+      }
+    }
+    for (const [v, gs] of m) {
+      if (v !== OTHER) ordered.push({ vendor: v, groups: gs })
+    }
+    if (m.has(OTHER)) ordered.push({ vendor: OTHER, groups: m.get(OTHER)! })
+    return ordered
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groups, vendorIndex])
+
+  const [selectedVendor, setSelectedVendor] = useState<string>(ALL)
+  const filteredGroups =
+    selectedVendor === ALL
+      ? groups
+      : (vendorBuckets.find((b) => b.vendor === selectedVendor)?.groups ?? [])
+
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>{t('Model Aliases')}</SectionPageLayout.Title>
@@ -156,19 +195,86 @@ export function ModelAliases() {
               </AlertDescription>
             </Alert>
           ) : (
-            groups.map((group) => (
-              <AliasGroupCard
-                key={group.id}
-                group={group}
-                vendorIndex={vendorIndex}
-                onChange={updateGroup}
-                onApply={(g) => applyGroups([g], g.id)}
-                applying={applyingId === group.id || applyingId === '__all__'}
-              />
-            ))
+            <div className='grid gap-4 md:grid-cols-[14rem_minmax(0,1fr)]'>
+              {/* 左侧：按供应商过滤 */}
+              <div className='md:border-border/60 flex flex-col gap-1 md:max-h-[calc(100vh-14rem)] md:overflow-y-auto md:border-r md:pr-3'>
+                <div className='text-muted-foreground px-1 pb-1 text-xs font-medium'>
+                  {t('Filter by vendor')}
+                </div>
+                <VendorFilterItem
+                  label={t('All')}
+                  count={groups.length}
+                  active={selectedVendor === ALL}
+                  onClick={() => setSelectedVendor(ALL)}
+                />
+                {vendorBuckets.map((b) => (
+                  <VendorFilterItem
+                    key={b.vendor}
+                    icon={
+                      b.vendor === OTHER
+                        ? null
+                        : getLobeIcon(vendorIndex.vendorIcon.get(b.vendor), 16)
+                    }
+                    label={b.vendor === OTHER ? t('Other') : b.vendor}
+                    count={b.groups.length}
+                    active={selectedVendor === b.vendor}
+                    onClick={() => setSelectedVendor(b.vendor)}
+                  />
+                ))}
+              </div>
+
+              {/* 右侧：所选供应商的别名组 */}
+              <div className='flex min-w-0 flex-col gap-4'>
+                {filteredGroups.map((group) => (
+                  <AliasGroupCard
+                    key={group.id}
+                    group={group}
+                    vendorIndex={vendorIndex}
+                    onChange={updateGroup}
+                    onApply={(g) => applyGroups([g], g.id)}
+                    applying={
+                      applyingId === group.id || applyingId === '__all__'
+                    }
+                  />
+                ))}
+              </div>
+            </div>
           )}
         </div>
       </SectionPageLayout.Content>
     </SectionPageLayout>
+  )
+}
+
+function VendorFilterItem(props: {
+  icon?: ReactNode
+  label: string
+  count: number
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type='button'
+      onClick={props.onClick}
+      className={cn(
+        'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors',
+        props.active
+          ? 'bg-primary/10 text-foreground font-medium'
+          : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+      )}
+    >
+      {props.icon ? (
+        <span className='flex size-4 shrink-0 items-center justify-center'>
+          {props.icon}
+        </span>
+      ) : (
+        <span className='size-4 shrink-0' />
+      )}
+      <span className='min-w-0 flex-1 truncate'>{props.label}</span>
+      <Badge variant='secondary' className='shrink-0'>
+        {props.count}
+      </Badge>
+    </button>
   )
 }

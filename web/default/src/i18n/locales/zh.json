@@ -5488,7 +5488,8 @@
     "Pick source channel(s) to read upstream prices, set a global markup and optional per-vendor overrides, then apply. Sell price = upstream price × (1 + markup%).": "选择来源渠道读取上游价格，设置全局加价及可选的分供应商覆盖，然后应用。售价 = 上游价 ×(1 + 加价%)。",
     "The group ratio multiplies your LOCAL price, not the channel cost. To earn a fixed % on every model, local price must first equal cost — that is exactly what this tool sets.": "分组倍率乘的是你的本地价，不是渠道成本。想让每个模型都赚固定的 %，本地价必须先等于成本——这正是本工具做的事。",
     "After applying here, keep the group ratio at 1, otherwise the two markups stack (cost × markup × group ratio).": "使用本工具后请把分组倍率保持为 1，否则两层加价会叠乘（成本 × 加价 × 分组倍率）。",
-    "Only channels whose upstream exposes a price list return prices; other channels have nothing to mark up.": "只有上游暴露价目表的渠道才能拉到价格；其他渠道无价可加。"
+    "Only channels whose upstream exposes a price list return prices; other channels have nothing to mark up.": "只有上游暴露价目表的渠道才能拉到价格；其他渠道无价可加。",
+    "Filter by vendor": "按供应商筛选"
   },
   "Confirm Kick": "确认踢出",
   "Are you sure you want to remove": "确定要将",
