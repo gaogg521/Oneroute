@@ -30,21 +30,25 @@ export type VendorIndex = {
   modelToVendor: Map<string, string>
   /** normalizeModelName(model_name) → 供应商名；仅收录无歧义（单一供应商）的规范化键 */
   normToVendor: Map<string, string>
-  /** 供应商名，按模型广场（pricing.vendors）顺序，用于 optgroup 排序 */
+  /** 供应商名，按模型广场（pricing.vendors）顺序，用于分组排序 */
   vendorOrder: string[]
+  /** 供应商名 → LobeHub 图标描述符（来自 Vendor.icon），用于分组标题图标 */
+  vendorIcon: Map<string, string>
 }
 
 export function buildVendorIndex(pricing?: PricingData | null): VendorIndex {
   const modelToVendor = new Map<string, string>()
   const normToVendor = new Map<string, string>()
   const vendorOrder: string[] = []
+  const vendorIcon = new Map<string, string>()
   if (!pricing?.vendors || !pricing?.data) {
-    return { modelToVendor, normToVendor, vendorOrder }
+    return { modelToVendor, normToVendor, vendorOrder, vendorIcon }
   }
   const idToName = new Map<number, string>()
   for (const v of pricing.vendors) {
     idToName.set(v.id, v.name)
     vendorOrder.push(v.name)
+    if (v.icon) vendorIcon.set(v.name, v.icon)
   }
   // 累积规范化键 → 供应商集合，用于剔除歧义键（同一规范化名映射到多个供应商时不参与回退）
   const normAccum = new Map<string, Set<string>>()
@@ -62,7 +66,7 @@ export function buildVendorIndex(pricing?: PricingData | null): VendorIndex {
   for (const [nk, set] of normAccum) {
     if (set.size === 1) normToVendor.set(nk, [...set][0])
   }
-  return { modelToVendor, normToVendor, vendorOrder }
+  return { modelToVendor, normToVendor, vendorOrder, vendorIcon }
 }
 
 /** 解析单个模型名的供应商：先精确匹配，再规范化名回退，找不到返回 '' */
