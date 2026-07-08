@@ -49,6 +49,7 @@ import { Route as AuthenticatedSystemInfoIndexRouteImport } from './routes/_auth
 import { Route as AuthenticatedSubscriptionsIndexRouteImport } from './routes/_authenticated/subscriptions/index'
 import { Route as AuthenticatedRedemptionCodesIndexRouteImport } from './routes/_authenticated/redemption-codes/index'
 import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authenticated/profile/index'
+import { Route as AuthenticatedPriceMarkupIndexRouteImport } from './routes/_authenticated/price-markup/index'
 import { Route as AuthenticatedPlaygroundIndexRouteImport } from './routes/_authenticated/playground/index'
 import { Route as AuthenticatedModelsIndexRouteImport } from './routes/_authenticated/models/index'
 import { Route as AuthenticatedModelAliasesIndexRouteImport } from './routes/_authenticated/model-aliases/index'
@@ -290,6 +291,12 @@ const AuthenticatedProfileIndexRoute =
   AuthenticatedProfileIndexRouteImport.update({
     id: '/profile/',
     path: '/profile/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedPriceMarkupIndexRoute =
+  AuthenticatedPriceMarkupIndexRouteImport.update({
+    id: '/price-markup/',
+    path: '/price-markup/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedPlaygroundIndexRoute =
@@ -545,6 +552,7 @@ export interface FileRoutesByFullPath {
   '/model-aliases/': typeof AuthenticatedModelAliasesIndexRoute
   '/models/': typeof AuthenticatedModelsIndexRoute
   '/playground/': typeof AuthenticatedPlaygroundIndexRoute
+  '/price-markup/': typeof AuthenticatedPriceMarkupIndexRoute
   '/profile/': typeof AuthenticatedProfileIndexRoute
   '/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
   '/subscriptions/': typeof AuthenticatedSubscriptionsIndexRoute
@@ -618,6 +626,7 @@ export interface FileRoutesByTo {
   '/model-aliases': typeof AuthenticatedModelAliasesIndexRoute
   '/models': typeof AuthenticatedModelsIndexRoute
   '/playground': typeof AuthenticatedPlaygroundIndexRoute
+  '/price-markup': typeof AuthenticatedPriceMarkupIndexRoute
   '/profile': typeof AuthenticatedProfileIndexRoute
   '/redemption-codes': typeof AuthenticatedRedemptionCodesIndexRoute
   '/subscriptions': typeof AuthenticatedSubscriptionsIndexRoute
@@ -696,6 +705,7 @@ export interface FileRoutesById {
   '/_authenticated/model-aliases/': typeof AuthenticatedModelAliasesIndexRoute
   '/_authenticated/models/': typeof AuthenticatedModelsIndexRoute
   '/_authenticated/playground/': typeof AuthenticatedPlaygroundIndexRoute
+  '/_authenticated/price-markup/': typeof AuthenticatedPriceMarkupIndexRoute
   '/_authenticated/profile/': typeof AuthenticatedProfileIndexRoute
   '/_authenticated/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
   '/_authenticated/subscriptions/': typeof AuthenticatedSubscriptionsIndexRoute
@@ -773,6 +783,7 @@ export interface FileRouteTypes {
     | '/model-aliases/'
     | '/models/'
     | '/playground/'
+    | '/price-markup/'
     | '/profile/'
     | '/redemption-codes/'
     | '/subscriptions/'
@@ -846,6 +857,7 @@ export interface FileRouteTypes {
     | '/model-aliases'
     | '/models'
     | '/playground'
+    | '/price-markup'
     | '/profile'
     | '/redemption-codes'
     | '/subscriptions'
@@ -923,6 +935,7 @@ export interface FileRouteTypes {
     | '/_authenticated/model-aliases/'
     | '/_authenticated/models/'
     | '/_authenticated/playground/'
+    | '/_authenticated/price-markup/'
     | '/_authenticated/profile/'
     | '/_authenticated/redemption-codes/'
     | '/_authenticated/subscriptions/'
@@ -1252,6 +1265,13 @@ declare module '@tanstack/react-router' {
       path: '/profile'
       fullPath: '/profile/'
       preLoaderRoute: typeof AuthenticatedProfileIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/price-markup/': {
+      id: '/_authenticated/price-markup/'
+      path: '/price-markup'
+      fullPath: '/price-markup/'
+      preLoaderRoute: typeof AuthenticatedPriceMarkupIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/playground/': {
@@ -1600,6 +1620,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedModelAliasesIndexRoute: typeof AuthenticatedModelAliasesIndexRoute
   AuthenticatedModelsIndexRoute: typeof AuthenticatedModelsIndexRoute
   AuthenticatedPlaygroundIndexRoute: typeof AuthenticatedPlaygroundIndexRoute
+  AuthenticatedPriceMarkupIndexRoute: typeof AuthenticatedPriceMarkupIndexRoute
   AuthenticatedProfileIndexRoute: typeof AuthenticatedProfileIndexRoute
   AuthenticatedRedemptionCodesIndexRoute: typeof AuthenticatedRedemptionCodesIndexRoute
   AuthenticatedSubscriptionsIndexRoute: typeof AuthenticatedSubscriptionsIndexRoute
@@ -1627,6 +1648,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedModelAliasesIndexRoute: AuthenticatedModelAliasesIndexRoute,
   AuthenticatedModelsIndexRoute: AuthenticatedModelsIndexRoute,
   AuthenticatedPlaygroundIndexRoute: AuthenticatedPlaygroundIndexRoute,
+  AuthenticatedPriceMarkupIndexRoute: AuthenticatedPriceMarkupIndexRoute,
   AuthenticatedProfileIndexRoute: AuthenticatedProfileIndexRoute,
   AuthenticatedRedemptionCodesIndexRoute:
     AuthenticatedRedemptionCodesIndexRoute,

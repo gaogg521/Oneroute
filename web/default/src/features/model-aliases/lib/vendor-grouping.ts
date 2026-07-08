@@ -70,7 +70,7 @@ export function buildVendorIndex(pricing?: PricingData | null): VendorIndex {
 }
 
 /** 解析单个模型名的供应商：先精确匹配，再规范化名回退，找不到返回 '' */
-function resolveVendor(model: string, idx: VendorIndex): string {
+export function resolveVendor(model: string, idx: VendorIndex): string {
   const exact = idx.modelToVendor.get(model)
   if (exact) return exact
   const nk = normalizeModelName(model)

@@ -27,6 +27,7 @@ import {
   LayoutDashboard,
   ListTodo,
   MessageSquare,
+  Percent,
   Radio,
   ServerCog,
   Settings,
@@ -147,6 +148,11 @@ export function useSidebarData(): SidebarData {
             title: t('Model Aliases'),
             url: '/model-aliases',
             icon: Combine,
+          },
+          {
+            title: t('Batch Price Markup'),
+            url: '/price-markup',
+            icon: Percent,
           },
           {
             title: t('Users'),
