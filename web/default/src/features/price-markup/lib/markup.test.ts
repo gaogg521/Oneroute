@@ -65,6 +65,31 @@ describe('buildMarkupPlan', () => {
     assert.equal(img.result, 0.055) // 0.05 * 1.10
   })
 
+  test('resolves base even when upstream keys are "name(id)" not matching passed channel names', () => {
+    // Mirrors real backend: upstreams keyed by "name(id)"; one channel 'same'
+    // with null current, another with a real number.
+    const realDiffs: DifferencesMap = {
+      'claude-fable-5': {
+        model_ratio: {
+          current: null,
+          upstreams: { 'memtensor.cn渠道(8)': 5, '得物国内模型渠道(1)': 'same' },
+          confidence: {},
+        },
+        completion_ratio: {
+          current: null,
+          upstreams: { 'memtensor.cn渠道(8)': 5, '得物国内模型渠道(1)': 'same' },
+          confidence: {},
+        },
+      },
+    }
+    // pass a mismatching bare name; fallback scan must still find 5
+    const plan = buildMarkupPlan(realDiffs, ['memtensor.cn渠道'], vendorIndex, 20, {})
+    assert.equal(plan.rows.length, 1)
+    assert.equal(plan.rows[0].base, 5)
+    assert.equal(plan.rows[0].result, 6) // 5 * 1.20
+    assert.equal(plan.rows[0].completionRatio, 5)
+  })
+
   test('per-vendor pct overrides global pct', () => {
     const plan = buildMarkupPlan(diffs, [CH], vendorIndex, 10, { OpenAI: 30 })
     const gpt = plan.rows.find((r) => r.model === 'gpt-4o')!

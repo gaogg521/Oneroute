@@ -48,11 +48,18 @@ export function effectiveUpstreamNumber(
   channelNames: string[]
 ): number | undefined {
   if (!diff) return undefined
+  // 优先按传入的渠道键顺序取值。注意后端 upstreams 的键是「渠道名(id)」，
+  // 与前端可能持有的裸渠道名不一定一致，故下面再兜底扫描所有键。
   for (const ch of channelNames) {
     const v = diff.upstreams?.[ch]
     if (typeof v === 'number') return v
     if (v === 'same' && typeof diff.current === 'number') return diff.current
   }
+  // 兜底：扫描全部上游值，取第一个数字（处理键名格式不匹配 / 'same' 但 current 为 null）
+  for (const v of Object.values(diff.upstreams ?? {})) {
+    if (typeof v === 'number') return v
+  }
+  if (typeof diff.current === 'number') return diff.current
   return undefined
 }
 
@@ -65,6 +72,9 @@ function effectiveUpstreamString(
     const v = diff.upstreams?.[ch]
     if (typeof v === 'string' && v !== 'same') return v
     if (v === 'same' && typeof diff.current === 'string') return diff.current
+  }
+  for (const v of Object.values(diff.upstreams ?? {})) {
+    if (typeof v === 'string' && v !== 'same') return v
   }
   return undefined
 }

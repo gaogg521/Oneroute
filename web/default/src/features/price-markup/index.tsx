@@ -127,7 +127,8 @@ export function PriceMarkup() {
         return
       }
       setDifferences(data.data.differences)
-      setChannelNames(variables.upstreams.map((u) => u.name))
+      // 后端 differences.upstreams 的键是「渠道名(id)」，这里按同样格式构造以精确匹配
+      setChannelNames(variables.upstreams.map((u) => `${u.name}(${u.id})`))
       const errs = data.data.test_results.filter((r) => r.status === 'error')
       if (errs.length > 0) {
         toast.warning(
