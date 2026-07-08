@@ -251,9 +251,28 @@ export function PriceMarkup() {
             <Info className='h-4 w-4' />
             <AlertTitle>{t('Mark up upstream prices by a percentage')}</AlertTitle>
             <AlertDescription>
-              {t(
-                'Pick source channel(s) to read upstream prices, set a global markup and optional per-vendor overrides, then apply. Sell price = upstream price × (1 + markup%). Note: this bakes the markup into local prices — keep the group ratio at 1 to avoid double-charging.'
-              )}
+              <p>
+                {t(
+                  'Pick source channel(s) to read upstream prices, set a global markup and optional per-vendor overrides, then apply. Sell price = upstream price × (1 + markup%).'
+                )}
+              </p>
+              <ul className='mt-2 list-disc space-y-1 pl-5'>
+                <li>
+                  {t(
+                    'The group ratio multiplies your LOCAL price, not the channel cost. To earn a fixed % on every model, local price must first equal cost — that is exactly what this tool sets.'
+                  )}
+                </li>
+                <li>
+                  {t(
+                    'After applying here, keep the group ratio at 1, otherwise the two markups stack (cost × markup × group ratio).'
+                  )}
+                </li>
+                <li>
+                  {t(
+                    'Only channels whose upstream exposes a price list return prices; other channels have nothing to mark up.'
+                  )}
+                </li>
+              </ul>
             </AlertDescription>
           </Alert>
 
