@@ -24,4 +24,5 @@ export const modelAliasesQueryKeys = {
   all: ['model-aliases'] as const,
   lists: () => [...modelAliasesQueryKeys.all, 'list'] as const,
   overview: () => [...modelAliasesQueryKeys.all, 'overview'] as const,
+  pricing: () => [...modelAliasesQueryKeys.all, 'pricing'] as const,
 }

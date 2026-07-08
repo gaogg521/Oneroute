@@ -26,13 +26,16 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import {
   NativeSelect,
+  NativeSelectOptGroup,
   NativeSelectOption,
 } from '@/components/ui/native-select'
 
+import { groupOptionsByVendor, type VendorIndex } from '../lib/vendor-grouping'
 import type { AliasGroup, ChannelBinding } from '../types'
 
 type AliasGroupCardProps = {
   group: AliasGroup
+  vendorIndex: VendorIndex
   onChange: (group: AliasGroup) => void
   onApply: (group: AliasGroup) => void
   applying: boolean
@@ -40,6 +43,7 @@ type AliasGroupCardProps = {
 
 export function AliasGroupCard({
   group,
+  vendorIndex,
   onChange,
   onApply,
   applying,
@@ -104,6 +108,10 @@ export function AliasGroupCard({
           const options = Array.from(
             new Set([b.target, ...b.availableModels].filter(Boolean))
           )
+          const vendorGroups = groupOptionsByVendor(options, vendorIndex)
+          // 仅当只有一个「未归类」分组时才平铺，否则一律按供应商分组
+          const flat =
+            vendorGroups.length === 1 && vendorGroups[0].vendor === ''
           return (
             <div
               key={b.channelId}
@@ -143,11 +151,24 @@ export function AliasGroupCard({
                   disabled={applying || !b.included}
                   className='min-w-48'
                 >
-                  {options.map((opt) => (
-                    <NativeSelectOption key={opt} value={opt}>
-                      {opt}
-                    </NativeSelectOption>
-                  ))}
+                  {flat
+                    ? options.map((opt) => (
+                        <NativeSelectOption key={opt} value={opt}>
+                          {opt}
+                        </NativeSelectOption>
+                      ))
+                    : vendorGroups.map((vg) => (
+                        <NativeSelectOptGroup
+                          key={vg.vendor || '__other__'}
+                          label={vg.vendor || t('Other')}
+                        >
+                          {vg.models.map((opt) => (
+                            <NativeSelectOption key={opt} value={opt}>
+                              {opt}
+                            </NativeSelectOption>
+                          ))}
+                        </NativeSelectOptGroup>
+                      ))}
                 </NativeSelect>
               </div>
             </div>

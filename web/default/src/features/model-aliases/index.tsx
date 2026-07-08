@@ -22,6 +22,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { getPricing } from '@/features/pricing/api'
 import { SectionPageLayout } from '@/components/layout'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -31,6 +32,7 @@ import { batchUpdateModelMapping, getChannelMappingOverview } from './api'
 import { AliasGroupCard } from './components/alias-group-card'
 import { buildAliasGroups, buildUpdatesFromGroups } from './lib/alias-grouping'
 import { modelAliasesQueryKeys } from './lib/query-keys'
+import { buildVendorIndex } from './lib/vendor-grouping'
 import type { AliasGroup, ChannelMappingRow } from './types'
 
 export function ModelAliases() {
@@ -46,6 +48,14 @@ export function ModelAliases() {
     () => data?.data ?? [],
     [data]
   )
+
+  // 供应商归类：复用模型广场的 /api/pricing（Model.vendor_id → Vendor），用于下拉分组
+  const { data: pricing } = useQuery({
+    queryKey: modelAliasesQueryKeys.pricing(),
+    queryFn: getPricing,
+    staleTime: 5 * 60 * 1000,
+  })
+  const vendorIndex = useMemo(() => buildVendorIndex(pricing), [pricing])
 
   // 从服务端数据自动聚类出建议分组
   const baseGroups = useMemo(() => buildAliasGroups(channels), [channels])
@@ -150,6 +160,7 @@ export function ModelAliases() {
               <AliasGroupCard
                 key={group.id}
                 group={group}
+                vendorIndex={vendorIndex}
                 onChange={updateGroup}
                 onApply={(g) => applyGroups([g], g.id)}
                 applying={applyingId === group.id || applyingId === '__all__'}
