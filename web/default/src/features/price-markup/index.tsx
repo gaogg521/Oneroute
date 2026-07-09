@@ -79,6 +79,12 @@ export function PriceMarkup() {
   >({})
   const [differences, setDifferences] = useState<DifferencesMap>({})
   const [channelNames, setChannelNames] = useState<string[]>([])
+  const [selectedChannels, setSelectedChannels] = useState<
+    Array<{ id: number; name: string }>
+  >([])
+  const [channelFactorInput, setChannelFactorInput] = useState<
+    Record<number, string>
+  >({})
   const [globalPct, setGlobalPct] = useState('20')
   const [perVendorPctInput, setPerVendorPctInput] = useState<
     Record<string, string>
@@ -129,6 +135,9 @@ export function PriceMarkup() {
       setDifferences(data.data.differences)
       // 后端 differences.upstreams 的键是「渠道名(id)」，这里按同样格式构造以精确匹配
       setChannelNames(variables.upstreams.map((u) => `${u.name}(${u.id})`))
+      setSelectedChannels(
+        variables.upstreams.map((u) => ({ id: u.id, name: u.name }))
+      )
       const errs = data.data.test_results.filter((r) => r.status === 'error')
       if (errs.length > 0) {
         toast.warning(
@@ -156,6 +165,18 @@ export function PriceMarkup() {
     return out
   }, [perVendorPctInput])
 
+  // 渠道换算系数：修正上游自己的分组/折扣倍率（同步只拉裸 model_ratio，不知道我方
+  // 账号在上游落在哪个分组）。键与 channelNames 一致（「渠道名(id)」），默认 1。
+  const channelFactors = useMemo(() => {
+    const out: Record<string, number> = {}
+    for (const ch of selectedChannels) {
+      const raw = channelFactorInput[ch.id]
+      const n = raw !== undefined && raw.trim() !== '' ? Number(raw) : 1
+      out[`${ch.name}(${ch.id})`] = Number.isNaN(n) ? 1 : n
+    }
+    return out
+  }, [selectedChannels, channelFactorInput])
+
   const plan = useMemo(
     () =>
       buildMarkupPlan(
@@ -163,9 +184,10 @@ export function PriceMarkup() {
         channelNames,
         vendorIndex,
         Number(globalPct) || 0,
-        perVendorPct
+        perVendorPct,
+        channelFactors
       ),
-    [differences, channelNames, vendorIndex, globalPct, perVendorPct]
+    [differences, channelNames, vendorIndex, globalPct, perVendorPct, channelFactors]
   )
 
   const buckets: VendorBucket[] = useMemo(() => {
@@ -298,6 +320,41 @@ export function PriceMarkup() {
               </div>
             </div>
           </div>
+
+          {selectedChannels.length > 0 ? (
+            <div className='border-border/60 flex flex-col gap-2 rounded-lg border p-3'>
+              <div className='text-xs font-medium'>
+                {t('Channel correction factor')}
+              </div>
+              <p className='text-muted-foreground text-xs'>
+                {t(
+                  'Upstream sync only reads the raw model_ratio — it has no idea which group/discount tier your account falls under on their side. If you know your real rate (e.g. their default group is 0.7x), enter it here: true cost = synced ratio × factor. Leave at 1 if the synced value already is your real cost.'
+                )}
+              </p>
+              <div className='flex flex-wrap gap-3'>
+                {selectedChannels.map((ch) => (
+                  <div key={ch.id} className='flex items-center gap-2'>
+                    <span className='text-muted-foreground text-xs'>
+                      {ch.name}
+                    </span>
+                    <Input
+                      type='number'
+                      placeholder='1'
+                      value={channelFactorInput[ch.id] ?? ''}
+                      onChange={(e) =>
+                        setChannelFactorInput((prev) => ({
+                          ...prev,
+                          [ch.id]: e.target.value,
+                        }))
+                      }
+                      disabled={busy}
+                      className='h-8 w-24'
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           {fetchMutation.isPending ? (
             <div className='flex items-center justify-center py-12'>

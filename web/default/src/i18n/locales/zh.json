@@ -5495,7 +5495,9 @@
     "(also list single-channel models that need no unification)": "（同时列出仅单渠道、无需统一的模型）",
     "These models have not been auto-classified to a vendor. Verify manually, then rescan — once their alias matches a known model name they move to the right vendor group.": "这些模型尚未自动归类到供应商。请手动校验后点「立即重扫」——当别名匹配到已知模型名后，会自动归入对应的供应商分组。",
     "Their billing expression has no recognizable price coefficient, so it could not be safely scaled and was left unchanged. (Most tiered/expression-billed models ARE handled — their per-tier coefficients are scaled by the same %, tier thresholds and labels stay untouched.)": "这些模型的计费表达式没有可识别的价格系数，无法安全按比例缩放，已保持不变。（大多数阶梯/表达式计费模型是能处理的——每个阶梯的价格系数会按同一百分比缩放，分档阈值和标签保持不变。）",
-    "Tiered/expression-billed models are marked up too — every per-tier price coefficient is scaled by the same %, while tier thresholds and labels stay exactly as upstream defined them.": "阶梯/表达式计费的模型也会一并加价——每个阶梯的价格系数按同一百分比缩放，分档阈值和标签完全保持上游原样。"
+    "Tiered/expression-billed models are marked up too — every per-tier price coefficient is scaled by the same %, while tier thresholds and labels stay exactly as upstream defined them.": "阶梯/表达式计费的模型也会一并加价——每个阶梯的价格系数按同一百分比缩放，分档阈值和标签完全保持上游原样。",
+    "Channel correction factor": "渠道换算系数",
+    "Upstream sync only reads the raw model_ratio — it has no idea which group/discount tier your account falls under on their side. If you know your real rate (e.g. their default group is 0.7x), enter it here: true cost = synced ratio × factor. Leave at 1 if the synced value already is your real cost.": "上游同步只读取裸的 model_ratio——它不知道你的账号在对方那边属于哪个分组/折扣档。如果你知道自己的真实费率（例如对方 default 分组是 0.7x），在这里填入：真实成本 = 同步倍率 × 系数。如果同步值本身就是你的真实成本，保持 1 即可。"
   },
   "Confirm Kick": "确认踢出",
   "Are you sure you want to remove": "确定要将",

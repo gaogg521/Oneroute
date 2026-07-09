@@ -113,6 +113,54 @@ describe('buildMarkupPlan', () => {
     const claude = plan.rows.find((r) => r.model === 'claude-sonnet-4-6')!
     assert.equal(claude.pct, 10) // Anthropic falls back to global
   })
+
+  test('channel factor corrects upstream group/discount ratio before markup (e.g. 得物 default-group 0.7x)', () => {
+    // real scenario: upstream reports raw model_ratio 0.5, but our account is
+    // actually billed under their "default" group at 0.7x -> true cost 0.35
+    const realCost: DifferencesMap = {
+      'deepseek-v4-flash': {
+        model_ratio: { current: null, upstreams: { '得物(1)': 0.5 }, confidence: {} },
+        completion_ratio: { current: null, upstreams: { '得物(1)': 2 }, confidence: {} },
+      },
+    }
+    const plan = buildMarkupPlan(
+      realCost,
+      ['得物(1)'],
+      vendorIndex,
+      20,
+      {},
+      { '得物(1)': 0.7 }
+    )
+    const row = plan.rows[0]
+    assert.equal(row.base, 0.35) // 0.5 * 0.7 (channel factor), true cost
+    assert.equal(row.result, 0.42) // 0.35 * 1.20 (markup)
+    // relative ratio unaffected by channel factor (invariant to it)
+    assert.equal(row.completionRatio, 2)
+  })
+
+  test('channel factor scales tiered expr coefficients too', () => {
+    const d: DifferencesMap = {
+      'tiered-x': {
+        billing_mode: { current: null, upstreams: { 'ch(9)': 'tiered_expr' }, confidence: {} },
+        billing_expr: {
+          current: null,
+          upstreams: { 'ch(9)': 'tier("base", p*10+c*20)' },
+          confidence: {},
+        },
+      },
+    }
+    const plan = buildMarkupPlan(d, ['ch(9)'], vendorIndex, 20, {}, { 'ch(9)': 0.5 })
+    const row = plan.rows[0]
+    // coef * channelFactor(0.5) * (1+20%) = coef * 0.6
+    assert.equal(row.exprAfter, 'tier("base", p * 6+c * 12)')
+  })
+
+  test('missing channel factor defaults to 1 (no change in behavior)', () => {
+    const plan = buildMarkupPlan(diffs, [CH], vendorIndex, 10, {}, { 'other-channel': 0.5 })
+    const gpt = plan.rows.find((r) => r.model === 'gpt-4o')!
+    assert.equal(gpt.base, 2.5)
+    assert.equal(gpt.result, 2.75)
+  })
 })
 
 describe('buildOptionUpdates', () => {

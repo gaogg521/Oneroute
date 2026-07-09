@@ -43,9 +43,15 @@ export type ExprScaleResult = {
  * 按比例缩放计费表达式里的价格系数，阶梯阈值/标签/请求规则（|||后半段）保持不变。
  * 例：pct=20 时 "p*4+c*18+cr*0.8" -> "p*4.8+c*21.6+cr*0.96"；
  * "p<=32000 ? tier(...) : ..." 里的 32000 不受影响。
+ * channelFactor（默认 1）用于先修正上游自己的分组/折扣倍率，再叠加加价：
+ * 最终系数 = 原系数 × channelFactor × (1+pct/100)。
  */
-export function scaleBillingExpr(expr: string, pct: number): ExprScaleResult {
-  const factor = 1 + pct / 100
+export function scaleBillingExpr(
+  expr: string,
+  pct: number,
+  channelFactor = 1
+): ExprScaleResult {
+  const factor = (1 + pct / 100) * channelFactor
   // 请求规则后缀（|||之后，如 when(...) * 6）不是价格系数，原样保留不缩放
   const sepIdx = expr.indexOf('|||')
   const billingPart = sepIdx >= 0 ? expr.slice(0, sepIdx) : expr

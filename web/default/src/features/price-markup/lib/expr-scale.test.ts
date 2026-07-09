@@ -10,6 +10,19 @@ describe('scaleBillingExpr', () => {
     assert.equal(r.scaled, 'tier("base", p * 3 + c * 18 + cr * 0.3)')
   })
 
+  test('applies an optional channel factor before the markup (upstream group correction)', () => {
+    // channelFactor=0.7 corrects an upstream default-group discount before +20% markup
+    const r = scaleBillingExpr('tier("base", p * 10 + c * 20)', 20, 0.7)
+    // coef * 0.7 * 1.20 = coef * 0.84
+    assert.equal(r.scaled, 'tier("base", p * 8.4 + c * 16.8)')
+  })
+
+  test('channel factor defaults to 1 (no behavior change when omitted)', () => {
+    const withDefault = scaleBillingExpr('tier("base", p * 10)', 20)
+    const withExplicit1 = scaleBillingExpr('tier("base", p * 10)', 20, 1)
+    assert.equal(withDefault.scaled, withExplicit1.scaled)
+  })
+
   test('leaves tier condition thresholds untouched (real prod expr: glm-5)', () => {
     const expr =
       'p <= 32000 ? tier("输入≤32k", p * 4 + c * 18 + cr * 0.8) : tier("32k<输入≤200k", p * 6 + c * 22 + cr * 1.2)'

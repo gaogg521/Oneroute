@@ -39,43 +39,53 @@ function round6(n: number): number {
   return Math.round(n * 1e6) / 1e6
 }
 
+/** 有效上游值 + 该值来自哪个渠道键（用于按渠道应用换算系数） */
+type EffectiveValue<T> = { value: T; channelKey: string }
+
 /**
  * 取某模型某 ratioType 在所选渠道中的「有效上游值」：
  * 按 channelNames 顺序，取第一个是数字的上游值；若上游标记 'same'（与本地相同），
  * 则回退到 diff.current（本地当前值）。都没有则返回 undefined。
+ * 同时返回该值来自哪个渠道键，供调用方查找该渠道的换算系数。
  */
 export function effectiveUpstreamNumber(
   diff: RatioDifference | undefined,
   channelNames: string[]
-): number | undefined {
+): EffectiveValue<number> | undefined {
   if (!diff) return undefined
   // 优先按传入的渠道键顺序取值。注意后端 upstreams 的键是「渠道名(id)」，
   // 与前端可能持有的裸渠道名不一定一致，故下面再兜底扫描所有键。
   for (const ch of channelNames) {
     const v = diff.upstreams?.[ch]
-    if (typeof v === 'number') return v
-    if (v === 'same' && typeof diff.current === 'number') return diff.current
+    if (typeof v === 'number') return { value: v, channelKey: ch }
+    if (v === 'same' && typeof diff.current === 'number') {
+      return { value: diff.current, channelKey: ch }
+    }
   }
   // 兜底：扫描全部上游值，取第一个数字（处理键名格式不匹配 / 'same' 但 current 为 null）
-  for (const v of Object.values(diff.upstreams ?? {})) {
-    if (typeof v === 'number') return v
+  for (const [ch, v] of Object.entries(diff.upstreams ?? {})) {
+    if (typeof v === 'number') return { value: v, channelKey: ch }
   }
-  if (typeof diff.current === 'number') return diff.current
+  if (typeof diff.current === 'number') {
+    return { value: diff.current, channelKey: channelNames[0] ?? '' }
+  }
   return undefined
 }
 
 function effectiveUpstreamString(
   diff: RatioDifference | undefined,
   channelNames: string[]
-): string | undefined {
+): EffectiveValue<string> | undefined {
   if (!diff) return undefined
   for (const ch of channelNames) {
     const v = diff.upstreams?.[ch]
-    if (typeof v === 'string' && v !== 'same') return v
-    if (v === 'same' && typeof diff.current === 'string') return diff.current
+    if (typeof v === 'string' && v !== 'same') return { value: v, channelKey: ch }
+    if (v === 'same' && typeof diff.current === 'string') {
+      return { value: diff.current, channelKey: ch }
+    }
   }
-  for (const v of Object.values(diff.upstreams ?? {})) {
-    if (typeof v === 'string' && v !== 'same') return v
+  for (const [ch, v] of Object.entries(diff.upstreams ?? {})) {
+    if (typeof v === 'string' && v !== 'same') return { value: v, channelKey: ch }
   }
   return undefined
 }
@@ -90,34 +100,47 @@ const REL_RATIO_FIELDS: Array<[RatioType, keyof MarkupRow]> = [
 ]
 
 /**
- * 计算加价方案。基准 = 所选渠道的上游价。
+ * 计算加价方案。基准 = 所选渠道的上游价 × 该渠道的「换算系数」。
+ * 换算系数用于修正上游自己的分组/折扣倍率（ratio_sync 只抓上游裸 model_ratio，
+ * 不知道我方账号在上游落在哪个分组、上游又打了多少折——由管理员手动填入换算系数
+ * 修正，如上游默认分组倍率 0.7，就填 0.7，真实成本 = 裸倍率 × 0.7）。
  * ratio/price 计费：只对 model_ratio/model_price 本体加价，相对倍率
- * （completion/cache/…）从上游原样复制。
- * 阶梯/表达式计费：按同一百分比缩放表达式里的每个价格系数（阶梯阈值/标签不变），
- * 结构与上游一致地整体加价；极少数无法识别系数的写法才跳过。
+ * （completion/cache/…）是相对 model_ratio 的比值，换算系数对分子分母同时生效，
+ * 比值不变，故原样复制、不需要再乘换算系数。
+ * 阶梯/表达式计费：按「换算系数 ×(1+加价%)」整体缩放表达式里的每个价格系数
+ * （阶梯阈值/标签不变），极少数无法识别系数的写法才跳过。
  */
 export function buildMarkupPlan(
   differences: DifferencesMap,
   channelNames: string[],
   vendorIndex: VendorIndex,
   globalPct: number,
-  perVendorPct: Record<string, number>
+  perVendorPct: Record<string, number>,
+  channelFactors: Record<string, number> = {}
 ): MarkupPlan {
   const rows: MarkupRow[] = []
   const skippedTiered: string[] = []
+  const factorOf = (channelKey: string) => channelFactors[channelKey] ?? 1
 
   for (const model of Object.keys(differences)) {
     const diff = differences[model]
     const vendor = resolveVendor(model, vendorIndex)
     const pct = perVendorPct[vendor] ?? globalPct
 
-    const billingMode = effectiveUpstreamString(diff.billing_mode, channelNames)
-    const billingExpr = effectiveUpstreamString(diff.billing_expr, channelNames)
-    const isTiered = billingMode === 'tiered_expr' || Boolean(billingExpr?.trim())
+    const billingModeEff = effectiveUpstreamString(diff.billing_mode, channelNames)
+    const billingExprEff = effectiveUpstreamString(diff.billing_expr, channelNames)
+    const isTiered =
+      billingModeEff?.value === 'tiered_expr' ||
+      Boolean(billingExprEff?.value.trim())
 
     if (isTiered) {
-      if (billingExpr && billingExpr.trim()) {
-        const { scaled, count } = scaleBillingExpr(billingExpr, pct)
+      if (billingExprEff && billingExprEff.value.trim()) {
+        const channelFactor = factorOf(billingExprEff.channelKey)
+        const { scaled, count } = scaleBillingExpr(
+          billingExprEff.value,
+          pct,
+          channelFactor
+        )
         if (count > 0) {
           rows.push({
             model,
@@ -126,7 +149,7 @@ export function buildMarkupPlan(
             base: 0,
             pct,
             result: 0,
-            exprBefore: billingExpr,
+            exprBefore: billingExprEff.value,
             exprAfter: scaled,
           })
           continue
@@ -137,17 +160,17 @@ export function buildMarkupPlan(
       continue
     }
 
-    const priceBase = effectiveUpstreamNumber(diff.model_price, channelNames)
-    const ratioBase = effectiveUpstreamNumber(diff.model_ratio, channelNames)
+    const priceBaseEff = effectiveUpstreamNumber(diff.model_price, channelNames)
+    const ratioBaseEff = effectiveUpstreamNumber(diff.model_ratio, channelNames)
 
     let billing: 'ratio' | 'price'
     let base: number
-    if (priceBase !== undefined) {
+    if (priceBaseEff !== undefined) {
       billing = 'price'
-      base = priceBase
-    } else if (ratioBase !== undefined) {
+      base = priceBaseEff.value * factorOf(priceBaseEff.channelKey)
+    } else if (ratioBaseEff !== undefined) {
       billing = 'ratio'
-      base = ratioBase
+      base = ratioBaseEff.value * factorOf(ratioBaseEff.channelKey)
     } else {
       continue // 该渠道没有此模型的可用基准价
     }
@@ -157,9 +180,10 @@ export function buildMarkupPlan(
 
     if (billing === 'ratio') {
       for (const [rt, field] of REL_RATIO_FIELDS) {
-        const v = effectiveUpstreamNumber(diff[rt], channelNames)
-        if (v !== undefined) {
-          ;(row as Record<string, unknown>)[field as string] = v
+        const eff = effectiveUpstreamNumber(diff[rt], channelNames)
+        if (eff !== undefined) {
+          // 相对倍率不随换算系数变化（分子分母同时缩放，比值不变）
+          ;(row as Record<string, unknown>)[field as string] = eff.value
         }
       }
     }
