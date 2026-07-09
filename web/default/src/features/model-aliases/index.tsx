@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Info, Loader2 } from 'lucide-react'
+import { Info, Loader2, RefreshCcw } from 'lucide-react'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -45,10 +45,15 @@ export function ModelAliases() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
 
-  const { data, isLoading, isError, error } = useQuery({
+  const { data, isLoading, isFetching, isError, error } = useQuery({
     queryKey: modelAliasesQueryKeys.overview(),
     queryFn: getChannelMappingOverview,
   })
+
+  // 手动立即重扫：重新拉取渠道概览 + 供应商数据并重算分组（无定时同步，读取即最新）
+  const handleRescan = () => {
+    queryClient.invalidateQueries({ queryKey: modelAliasesQueryKeys.all })
+  }
 
   const channels: ChannelMappingRow[] = useMemo(
     () => data?.data ?? [],
@@ -150,6 +155,17 @@ export function ModelAliases() {
     <SectionPageLayout>
       <SectionPageLayout.Title>{t('Model Aliases')}</SectionPageLayout.Title>
       <SectionPageLayout.Actions>
+        <Button
+          size='sm'
+          variant='outline'
+          onClick={handleRescan}
+          disabled={isFetching || applyingId !== null}
+        >
+          <RefreshCcw
+            className={cn('h-4 w-4', isFetching && 'animate-spin')}
+          />
+          {t('Rescan now')}
+        </Button>
         <Button
           size='sm'
           onClick={() => applyGroups(applicableGroups, '__all__')}
