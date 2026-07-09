@@ -35,6 +35,8 @@ var defaultVendorRules = map[string]string{
 	"grok":       "xAI",
 	"llama":      "Meta",
 	"doubao":     "字节跳动",
+	"seedance":   "字节跳动",
+	"seedream":   "字节跳动",
 	"kling":      "快手",
 	"jimeng":     "即梦",
 	"vidu":       "Vidu",
