@@ -27,7 +27,9 @@ import { SectionPageLayout } from '@/components/layout'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
 import { Spinner } from '@/components/ui/spinner'
+import { Switch } from '@/components/ui/switch'
 import { getLobeIcon } from '@/lib/lobe-icon'
 import { cn } from '@/lib/utils'
 
@@ -68,8 +70,14 @@ export function ModelAliases() {
   })
   const vendorIndex = useMemo(() => buildVendorIndex(pricing), [pricing])
 
+  // 「显示全部模型」开关：关=只显示需统一的；开=含仅单渠道单名的模型
+  const [showAll, setShowAll] = useState(false)
+
   // 从服务端数据自动聚类出建议分组
-  const baseGroups = useMemo(() => buildAliasGroups(channels), [channels])
+  const baseGroups = useMemo(
+    () => buildAliasGroups(channels, showAll),
+    [channels, showAll]
+  )
 
   // 可编辑的工作副本，服务端数据变化时重置
   const [groups, setGroups] = useState<AliasGroup[]>(baseGroups)
@@ -189,6 +197,22 @@ export function ModelAliases() {
             </AlertDescription>
           </Alert>
 
+          <div className='flex items-center gap-2'>
+            <Switch
+              id='show-all-models'
+              checked={showAll}
+              onCheckedChange={(v) => setShowAll(v === true)}
+            />
+            <Label htmlFor='show-all-models' className='text-sm'>
+              {t('Show all models')}
+            </Label>
+            <span className='text-muted-foreground text-xs'>
+              {t(
+                '(also list single-channel models that need no unification)'
+              )}
+            </span>
+          </div>
+
           {isLoading ? (
             <div className='flex items-center justify-center py-16'>
               <Spinner className='size-6' />
@@ -241,6 +265,16 @@ export function ModelAliases() {
 
               {/* 右侧：所选供应商的别名组 */}
               <div className='flex min-w-0 flex-col gap-4'>
+                {selectedVendor === OTHER ? (
+                  <Alert>
+                    <Info className='h-4 w-4' />
+                    <AlertDescription>
+                      {t(
+                        'These models have not been auto-classified to a vendor. Verify manually, then rescan — once their alias matches a known model name they move to the right vendor group.'
+                      )}
+                    </AlertDescription>
+                  </Alert>
+                ) : null}
                 {filteredGroups.map((group) => (
                   <AliasGroupCard
                     key={group.id}

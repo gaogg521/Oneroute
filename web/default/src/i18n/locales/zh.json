@@ -5490,7 +5490,10 @@
     "After applying here, keep the group ratio at 1, otherwise the two markups stack (cost × markup × group ratio).": "使用本工具后请把分组倍率保持为 1，否则两层加价会叠乘（成本 × 加价 × 分组倍率）。",
     "Only channels whose upstream exposes a price list return prices; other channels have nothing to mark up.": "只有上游暴露价目表的渠道才能拉到价格；其他渠道无价可加。",
     "Filter by vendor": "按供应商筛选",
-    "Rescan now": "立即重扫"
+    "Rescan now": "立即重扫",
+    "Show all models": "显示全部模型",
+    "(also list single-channel models that need no unification)": "（同时列出仅单渠道、无需统一的模型）",
+    "These models have not been auto-classified to a vendor. Verify manually, then rescan — once their alias matches a known model name they move to the right vendor group.": "这些模型尚未自动归类到供应商。请手动校验后点「立即重扫」——当别名匹配到已知模型名后，会自动归入对应的供应商分组。"
   },
   "Confirm Kick": "确认踢出",
   "Are you sure you want to remove": "确定要将",

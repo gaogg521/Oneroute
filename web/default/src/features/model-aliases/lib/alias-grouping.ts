@@ -88,7 +88,10 @@ export function parseMapping(raw: string): Record<string, string> {
  * 只保留有意义的组：跨 ≥2 个渠道，或组内出现 ≥2 个不同原始名。
  * 已应用过别名的渠道（model_mapping 里含该别名 key）会被识别并复用现有真实名。
  */
-export function buildAliasGroups(channels: ChannelMappingRow[]): AliasGroup[] {
+export function buildAliasGroups(
+  channels: ChannelMappingRow[],
+  includeSingletons = false
+): AliasGroup[] {
   // normalizedKey -> (channelId -> 该渠道属于此键的原始模型名集合)
   const clusters = new Map<string, Map<number, Set<string>>>()
   const mappingByChannel = new Map<number, Record<string, string>>()
@@ -121,8 +124,8 @@ export function buildAliasGroups(channels: ChannelMappingRow[]): AliasGroup[] {
     for (const set of byCh.values()) for (const r of set) allRaw.add(r)
     const channelIds = [...byCh.keys()]
 
-    // 只有一个渠道且只有一个名字 → 无需别名
-    if (channelIds.length < 2 && allRaw.size < 2) continue
+    // 只有一个渠道且只有一个名字 → 默认无需别名而跳过；includeSingletons 时全部保留
+    if (!includeSingletons && channelIds.length < 2 && allRaw.size < 2) continue
 
     // 若某原始名已被某渠道当作 mapping key 使用（说明是既有别名），优先作为别名名
     const establishedAlias = [...allRaw].filter((r) =>

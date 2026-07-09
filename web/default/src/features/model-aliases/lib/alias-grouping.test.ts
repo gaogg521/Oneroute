@@ -74,6 +74,15 @@ describe('buildAliasGroups', () => {
     assert.equal(groups.length, 0)
   })
 
+  test('includeSingletons surfaces single-channel single-name models', () => {
+    const channels = [ch(1, 'A', 'solo-model,gpt-4o-mini')]
+    assert.equal(buildAliasGroups(channels, false).length, 0)
+    const all = buildAliasGroups(channels, true)
+    assert.equal(all.length, 2) // both models now appear
+    assert.ok(all.some((g) => g.alias === 'solo-model'))
+    assert.ok(all.some((g) => g.alias === 'gpt-4o-mini'))
+  })
+
   test('recognizes an already-applied alias and reuses the existing target', () => {
     // channel B already had gpt-4o applied additively
     const channels = [

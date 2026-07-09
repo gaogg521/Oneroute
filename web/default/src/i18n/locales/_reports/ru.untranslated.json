@@ -107,5 +107,8 @@
   "After applying here, keep the group ratio at 1, otherwise the two markups stack (cost × markup × group ratio).": "After applying here, keep the group ratio at 1, otherwise the two markups stack (cost × markup × group ratio).",
   "Only channels whose upstream exposes a price list return prices; other channels have nothing to mark up.": "Only channels whose upstream exposes a price list return prices; other channels have nothing to mark up.",
   "Filter by vendor": "Filter by vendor",
-  "Rescan now": "Rescan now"
+  "Rescan now": "Rescan now",
+  "Show all models": "Show all models",
+  "(also list single-channel models that need no unification)": "(also list single-channel models that need no unification)",
+  "These models have not been auto-classified to a vendor. Verify manually, then rescan — once their alias matches a known model name they move to the right vendor group.": "These models have not been auto-classified to a vendor. Verify manually, then rescan — once their alias matches a known model name they move to the right vendor group."
 }
