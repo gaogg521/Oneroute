@@ -37,10 +37,10 @@ export type OptionMaps = {
 export type MarkupRow = {
   model: string
   vendor: string // 供应商名，''=未归类（其他）
-  billing: 'ratio' | 'price' // 基准来自 model_ratio 还是 model_price（每模型二选一）
-  base: number // 上游基准价
+  billing: 'ratio' | 'price' | 'expr' // ratio/price 二选一；expr=阶梯/表达式计费
+  base: number // 上游基准价（expr 行不使用，为 0）
   pct: number // 实际应用的加价百分比
-  result: number // base × (1 + pct/100)
+  result: number // base × (1 + pct/100)（expr 行不使用，为 0）
   // ratio 计费时从上游原样复制的相对倍率（不加价）
   completionRatio?: number
   cacheRatio?: number
@@ -48,11 +48,14 @@ export type MarkupRow = {
   imageRatio?: number
   audioRatio?: number
   audioCompletionRatio?: number
+  // expr 计费：原始表达式与按比例缩放系数后的表达式（仅数字系数变化，阶梯阈值/标签不变）
+  exprBefore?: string
+  exprAfter?: string
 }
 
 export type MarkupPlan = {
   rows: MarkupRow[]
-  /** 因阶梯/表达式计费而跳过的模型（无法简单按%加价） */
+  /** 表达式无法安全识别系数、因而未能加价的模型（极少数非常规写法） */
   skippedTiered: string[]
 }
 

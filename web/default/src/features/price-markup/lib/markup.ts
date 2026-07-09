@@ -32,6 +32,7 @@ import type {
   OptionMaps,
   OptionUpdate,
 } from '../types'
+import { scaleBillingExpr } from './expr-scale'
 
 /** 保留 6 位小数，消除浮点噪声 */
 function round6(n: number): number {
@@ -89,8 +90,11 @@ const REL_RATIO_FIELDS: Array<[RatioType, keyof MarkupRow]> = [
 ]
 
 /**
- * 计算加价方案。基准 = 所选渠道的上游价，加价只作用于 model_ratio / model_price，
- * 相对倍率（completion/cache/…）从上游原样复制。阶梯/表达式计费模型跳过。
+ * 计算加价方案。基准 = 所选渠道的上游价。
+ * ratio/price 计费：只对 model_ratio/model_price 本体加价，相对倍率
+ * （completion/cache/…）从上游原样复制。
+ * 阶梯/表达式计费：按同一百分比缩放表达式里的每个价格系数（阶梯阈值/标签不变），
+ * 结构与上游一致地整体加价；极少数无法识别系数的写法才跳过。
  */
 export function buildMarkupPlan(
   differences: DifferencesMap,
@@ -104,11 +108,31 @@ export function buildMarkupPlan(
 
   for (const model of Object.keys(differences)) {
     const diff = differences[model]
+    const vendor = resolveVendor(model, vendorIndex)
+    const pct = perVendorPct[vendor] ?? globalPct
 
-    // 阶梯/表达式计费 → 跳过（无法简单按%加价）
     const billingMode = effectiveUpstreamString(diff.billing_mode, channelNames)
     const billingExpr = effectiveUpstreamString(diff.billing_expr, channelNames)
-    if (billingMode === 'tiered_expr' || (billingExpr && billingExpr.trim())) {
+    const isTiered = billingMode === 'tiered_expr' || Boolean(billingExpr?.trim())
+
+    if (isTiered) {
+      if (billingExpr && billingExpr.trim()) {
+        const { scaled, count } = scaleBillingExpr(billingExpr, pct)
+        if (count > 0) {
+          rows.push({
+            model,
+            vendor,
+            billing: 'expr',
+            base: 0,
+            pct,
+            result: 0,
+            exprBefore: billingExpr,
+            exprAfter: scaled,
+          })
+          continue
+        }
+      }
+      // 表达式缺失，或未识别出任何可缩放的价格系数 → 无法安全加价
       skippedTiered.push(model)
       continue
     }
@@ -128,10 +152,7 @@ export function buildMarkupPlan(
       continue // 该渠道没有此模型的可用基准价
     }
 
-    const vendor = resolveVendor(model, vendorIndex)
-    const pct = perVendorPct[vendor] ?? globalPct
     const result = round6(base * (1 + pct / 100))
-
     const row: MarkupRow = { model, vendor, billing, base, pct, result }
 
     if (billing === 'ratio') {
@@ -173,6 +194,22 @@ export function buildOptionUpdates(
   }
 
   for (const r of plan.rows) {
+    if (r.billing === 'expr') {
+      // 阶梯/表达式计费：写入缩放后的表达式，清掉该模型的 ratio/price 系列
+      // （二者互斥，避免旧的固定倍率覆盖新的阶梯定价）
+      next.BillingMode[r.model] = 'tiered_expr'
+      next.BillingExpr[r.model] = r.exprAfter ?? ''
+      delete next.ModelPrice[r.model]
+      delete next.ModelRatio[r.model]
+      delete next.CompletionRatio[r.model]
+      delete next.CacheRatio[r.model]
+      delete next.CreateCacheRatio[r.model]
+      delete next.ImageRatio[r.model]
+      delete next.AudioRatio[r.model]
+      delete next.AudioCompletionRatio[r.model]
+      continue
+    }
+
     // 清除该模型的阶梯计费，避免覆盖新价
     delete next.BillingMode[r.model]
     delete next.BillingExpr[r.model]

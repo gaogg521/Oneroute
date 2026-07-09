@@ -272,6 +272,11 @@ export function PriceMarkup() {
                     'Only channels whose upstream exposes a price list return prices; other channels have nothing to mark up.'
                   )}
                 </li>
+                <li>
+                  {t(
+                    'Tiered/expression-billed models are marked up too — every per-tier price coefficient is scaled by the same %, while tier thresholds and labels stay exactly as upstream defined them.'
+                  )}
+                </li>
               </ul>
             </AlertDescription>
           </Alert>
@@ -319,7 +324,7 @@ export function PriceMarkup() {
                   </AlertTitle>
                   <AlertDescription>
                     {t(
-                      'Models with expression/tiered billing cannot be marked up by a flat percentage and were left unchanged.'
+                      'Their billing expression has no recognizable price coefficient, so it could not be safely scaled and was left unchanged. (Most tiered/expression-billed models ARE handled — their per-tier coefficients are scaled by the same %, tier thresholds and labels stay untouched.)'
                     )}
                   </AlertDescription>
                 </Alert>
@@ -370,24 +375,44 @@ export function PriceMarkup() {
                     {b.rows.map((r) => (
                       <div
                         key={r.model}
-                        className='border-border/60 flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-1.5 text-xs'
+                        className='border-border/60 flex flex-col gap-1 rounded-md border px-3 py-1.5 text-xs'
                       >
-                        <span className='min-w-0 flex-1 truncate font-medium'>
-                          {r.model}
-                          <Badge variant='outline' className='ml-2'>
-                            {r.billing === 'price'
-                              ? t('Per-call')
-                              : t('Ratio')}
-                          </Badge>
-                        </span>
-                        <span className='text-muted-foreground tabular-nums'>
-                          {r.base}
-                          <span className='mx-1'>×{(1 + r.pct / 100).toFixed(2)}</span>
-                          →
-                          <span className='text-foreground ml-1 font-semibold'>
-                            {r.result}
+                        <div className='flex flex-wrap items-center justify-between gap-2'>
+                          <span className='min-w-0 flex-1 truncate font-medium'>
+                            {r.model}
+                            <Badge variant='outline' className='ml-2'>
+                              {r.billing === 'price'
+                                ? t('Per-call')
+                                : r.billing === 'expr'
+                                  ? t('Tiered')
+                                  : t('Ratio')}
+                            </Badge>
                           </span>
-                        </span>
+                          {r.billing === 'expr' ? (
+                            <span className='text-muted-foreground shrink-0 tabular-nums'>
+                              ×{(1 + r.pct / 100).toFixed(2)}
+                            </span>
+                          ) : (
+                            <span className='text-muted-foreground shrink-0 tabular-nums'>
+                              {r.base}
+                              <span className='mx-1'>
+                                ×{(1 + r.pct / 100).toFixed(2)}
+                              </span>
+                              →
+                              <span className='text-foreground ml-1 font-semibold'>
+                                {r.result}
+                              </span>
+                            </span>
+                          )}
+                        </div>
+                        {r.billing === 'expr' ? (
+                          <div className='bg-muted/40 flex flex-col gap-0.5 rounded p-1.5 font-mono text-[10px] break-all'>
+                            <div className='text-muted-foreground opacity-70 line-through'>
+                              {r.exprBefore}
+                            </div>
+                            <div className='text-foreground'>{r.exprAfter}</div>
+                          </div>
+                        ) : null}
                       </div>
                     ))}
                   </CardContent>

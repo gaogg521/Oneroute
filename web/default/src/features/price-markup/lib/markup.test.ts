@@ -33,21 +33,36 @@ const diffs: DifferencesMap = {
   'some-image-model': {
     model_price: { current: 0.02, upstreams: { [CH]: 0.05 }, confidence: {} },
   },
-  // tiered -> skipped
+  // tiered/expr-billed -> coefficients scaled by pct, structure preserved
   'tiered-model': {
+    billing_mode: { current: null, upstreams: { [CH]: 'tiered_expr' }, confidence: {} },
     billing_expr: {
       current: null,
       upstreams: { [CH]: 'tier("base", p*3+c*15)' },
       confidence: {},
     },
   },
+  // tiered/expr-billed but no recognizable price coefficient -> genuinely skipped
+  'weird-tiered-model': {
+    billing_mode: { current: null, upstreams: { [CH]: 'tiered_expr' }, confidence: {} },
+    billing_expr: {
+      current: null,
+      upstreams: { [CH]: 'tier("base", 5)' },
+      confidence: {},
+    },
+  },
 }
 
 describe('buildMarkupPlan', () => {
-  test('marks up model_ratio/model_price by pct; copies relative ratios; skips tiered', () => {
+  test('marks up model_ratio/model_price by pct; copies relative ratios; scales tiered expr', () => {
     const plan = buildMarkupPlan(diffs, [CH], vendorIndex, 10, {})
 
-    assert.deepEqual(plan.skippedTiered, ['tiered-model'])
+    assert.deepEqual(plan.skippedTiered, ['weird-tiered-model'])
+
+    const tiered = plan.rows.find((r) => r.model === 'tiered-model')!
+    assert.equal(tiered.billing, 'expr')
+    assert.equal(tiered.exprBefore, 'tier("base", p*3+c*15)')
+    assert.equal(tiered.exprAfter, 'tier("base", p * 3.3+c * 16.5)')
 
     const gpt = plan.rows.find((r) => r.model === 'gpt-4o')!
     assert.equal(gpt.billing, 'ratio')
@@ -124,5 +139,14 @@ describe('buildOptionUpdates', () => {
     // image model switched to price; its ratio entries absent
     assert.equal(map.get('ModelPrice')['some-image-model'], 0.055)
     assert.equal('some-image-model' in map.get('ModelRatio'), false)
+
+    // tiered model: scaled expression written, ratio/price maps untouched for it
+    assert.equal(map.get('billing_setting.billing_mode')['tiered-model'], 'tiered_expr')
+    assert.equal(
+      map.get('billing_setting.billing_expr')['tiered-model'],
+      'tier("base", p * 3.3+c * 16.5)'
+    )
+    assert.equal('tiered-model' in map.get('ModelRatio'), false)
+    assert.equal('tiered-model' in map.get('ModelPrice'), false)
   })
 })
