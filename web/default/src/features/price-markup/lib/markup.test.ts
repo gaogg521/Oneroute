@@ -70,6 +70,7 @@ describe('buildMarkupPlan', () => {
     assert.equal(gpt.result, 2.75) // 2.5 * 1.10
     assert.equal(gpt.completionRatio, 4) // copied, NOT marked up
     assert.equal(gpt.vendor, 'OpenAI')
+    assert.equal(gpt.channelFactor, 1) // no channel factor configured -> default 1
 
     const claude = plan.rows.find((r) => r.model === 'claude-sonnet-4-6')!
     assert.equal(claude.base, 3) // 'same' -> current
@@ -134,6 +135,7 @@ describe('buildMarkupPlan', () => {
     const row = plan.rows[0]
     assert.equal(row.base, 0.35) // 0.5 * 0.7 (channel factor), true cost
     assert.equal(row.result, 0.42) // 0.35 * 1.20 (markup)
+    assert.equal(row.channelFactor, 0.7) // recorded for later per-model re-edit
     // relative ratio unaffected by channel factor (invariant to it)
     assert.equal(row.completionRatio, 2)
   })
@@ -153,6 +155,7 @@ describe('buildMarkupPlan', () => {
     const row = plan.rows[0]
     // coef * channelFactor(0.5) * (1+20%) = coef * 0.6
     assert.equal(row.exprAfter, 'tier("base", p * 6+c * 12)')
+    assert.equal(row.channelFactor, 0.5)
   })
 
   test('missing channel factor defaults to 1 (no change in behavior)', () => {

@@ -17,8 +17,18 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, Info, Loader2, Percent, RefreshCcw } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import {
+  AlertTriangle,
+  Check,
+  Info,
+  Loader2,
+  Pencil,
+  Percent,
+  RefreshCcw,
+  RotateCcw,
+  X,
+} from 'lucide-react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -39,6 +49,16 @@ import {
 import type { DifferencesMap, UpstreamChannel } from '@/features/system-settings/types'
 import { SectionPageLayout } from '@/components/layout'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
@@ -48,14 +68,6 @@ import {
   NativeSelectOption,
 } from '@/components/ui/native-select'
 import { Spinner } from '@/components/ui/spinner'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { getLobeIcon } from '@/lib/lobe-icon'
 
 import {
@@ -67,9 +79,14 @@ import {
 } from './api'
 import {
   buildHistoryEntries,
+  buildResetOptionUpdates,
   MARKUP_HISTORY_OPTION_KEY,
   mergeMarkupHistory,
+  type MarkupHistoryEntry,
   parseMarkupHistory,
+  recomputeEntryForPct,
+  recomputePctForPrice,
+  removeMarkupHistoryEntry,
 } from './lib/history'
 import {
   buildMarkupPlan,
@@ -127,6 +144,13 @@ export function PriceMarkup() {
   const [perVendorPctInput, setPerVendorPctInput] = useState<
     Record<string, string>
   >({})
+  // 已应用加价记录里正在行内编辑的模型（null=无编辑中）；保存即立即写回系统实际价格。
+  // editMode 决定当前编辑的是加价%还是直接改最终价格（后者不适用于阶梯/表达式计费）
+  const [editingModel, setEditingModel] = useState<string | null>(null)
+  const [editMode, setEditMode] = useState<'pct' | 'price'>('pct')
+  const [editDraft, setEditDraft] = useState('')
+  // 待确认重置的模型（null=无待确认）；确认后把系统价格改回本工具第一次同步它之前的样子
+  const [resetModel, setResetModel] = useState<string | null>(null)
 
   const { data: channelsData } = useQuery({
     queryKey: priceMarkupQueryKeys.channels(),
@@ -295,6 +319,175 @@ export function PriceMarkup() {
     [history]
   )
 
+  // 已应用加价记录按供应商分组重排为卡片，与下方渠道同步预览卡片视觉语言一致
+  type HistoryVendorBucket = {
+    vendor: string
+    entries: Array<[string, MarkupHistoryEntry]>
+  }
+  const historyBuckets: HistoryVendorBucket[] = useMemo(() => {
+    const byVendor = new Map<string, Array<[string, MarkupHistoryEntry]>>()
+    for (const entry of historyRows) {
+      const vendor = entry[1].vendor
+      const list = byVendor.get(vendor)
+      if (list) list.push(entry)
+      else byVendor.set(vendor, [entry])
+    }
+    const ordered: HistoryVendorBucket[] = []
+    for (const v of vendorIndex.vendorOrder) {
+      if (byVendor.has(v)) {
+        ordered.push({ vendor: v, entries: byVendor.get(v)! })
+        byVendor.delete(v)
+      }
+    }
+    for (const [v, entries] of byVendor) {
+      if (v !== '') ordered.push({ vendor: v, entries })
+    }
+    if (byVendor.has('')) {
+      ordered.push({ vendor: '', entries: byVendor.get('')! })
+    }
+    return ordered
+  }, [historyRows, vendorIndex.vendorOrder])
+
+  // 单个模型的加价%行内编辑：立即基于记录里的基准价/原始表达式重算并写回系统实际价格
+  const editPctMutation = useMutation({
+    mutationFn: async ({ model, pct }: { model: string; pct: number }) => {
+      const opts = await getSystemOptions()
+      const current = parseOptionMaps(opts.data ?? [])
+      const currentHistory = parseMarkupHistory(opts.data ?? [])
+      const entry = currentHistory[model]
+      if (!entry) throw new Error(t("Could not recompute this model's price"))
+      const { result, exprAfter } = recomputeEntryForPct(entry, pct)
+
+      if (entry.billing === 'expr') {
+        if (exprAfter === undefined) {
+          throw new Error(t("Could not recompute this model's price"))
+        }
+        await updateSystemOption({
+          key: 'billing_setting.billing_expr',
+          value: JSON.stringify(
+            { ...current.BillingExpr, [model]: exprAfter },
+            null,
+            2
+          ),
+        })
+      } else if (entry.billing === 'price') {
+        await updateSystemOption({
+          key: 'ModelPrice',
+          value: JSON.stringify(
+            { ...current.ModelPrice, [model]: result },
+            null,
+            2
+          ),
+        })
+      } else {
+        await updateSystemOption({
+          key: 'ModelRatio',
+          value: JSON.stringify(
+            { ...current.ModelRatio, [model]: result },
+            null,
+            2
+          ),
+        })
+      }
+
+      const updatedEntry: MarkupHistoryEntry = {
+        ...entry,
+        pct,
+        appliedResult: result ?? entry.appliedResult,
+        exprAfter: exprAfter ?? entry.exprAfter,
+        appliedAt: Date.now(),
+      }
+      await updateSystemOption({
+        key: MARKUP_HISTORY_OPTION_KEY,
+        value: mergeMarkupHistory(currentHistory, { [model]: updatedEntry }),
+      })
+    },
+    onSuccess: () => {
+      toast.success(t('Markup updated'))
+      setEditingModel(null)
+      void queryClient.invalidateQueries({
+        queryKey: priceMarkupQueryKeys.history(),
+      })
+    },
+    onError: (e: Error) =>
+      toast.error(e.message || t('Failed to update markup')),
+  })
+
+  // 管理员直接输入最终价格（而非加价%）时：只对 ratio/price 计费生效，
+  // expr 计费没有单一价格，UI 层已经不展示这个入口，这里再兜底拒绝一次
+  const editPriceMutation = useMutation({
+    mutationFn: async ({ model, price }: { model: string; price: number }) => {
+      const opts = await getSystemOptions()
+      const current = parseOptionMaps(opts.data ?? [])
+      const currentHistory = parseMarkupHistory(opts.data ?? [])
+      const entry = currentHistory[model]
+      if (!entry || entry.billing === 'expr') {
+        throw new Error(t("Could not recompute this model's price"))
+      }
+      const pct = recomputePctForPrice(entry, price)
+
+      await updateSystemOption({
+        key: entry.billing === 'price' ? 'ModelPrice' : 'ModelRatio',
+        value: JSON.stringify(
+          {
+            ...(entry.billing === 'price'
+              ? current.ModelPrice
+              : current.ModelRatio),
+            [model]: price,
+          },
+          null,
+          2
+        ),
+      })
+
+      const updatedEntry: MarkupHistoryEntry = {
+        ...entry,
+        pct,
+        appliedResult: price,
+        appliedAt: Date.now(),
+      }
+      await updateSystemOption({
+        key: MARKUP_HISTORY_OPTION_KEY,
+        value: mergeMarkupHistory(currentHistory, { [model]: updatedEntry }),
+      })
+    },
+    onSuccess: () => {
+      toast.success(t('Markup updated'))
+      setEditingModel(null)
+      void queryClient.invalidateQueries({
+        queryKey: priceMarkupQueryKeys.history(),
+      })
+    },
+    onError: (e: Error) =>
+      toast.error(e.message || t('Failed to update markup')),
+  })
+
+  // 重置：把系统实际价格改回本工具第一次同步该模型之前的原始状态，并把该模型移出历史记录
+  const resetMutation = useMutation({
+    mutationFn: async (model: string) => {
+      const opts = await getSystemOptions()
+      const current = parseOptionMaps(opts.data ?? [])
+      const currentHistory = parseMarkupHistory(opts.data ?? [])
+      const entry = currentHistory[model]
+      if (!entry) throw new Error(t("Could not recompute this model's price"))
+
+      const updates = buildResetOptionUpdates(model, entry, current)
+      for (const u of updates) await updateSystemOption(u)
+      await updateSystemOption({
+        key: MARKUP_HISTORY_OPTION_KEY,
+        value: removeMarkupHistoryEntry(currentHistory, model),
+      })
+    },
+    onSuccess: () => {
+      toast.success(t('Price reset'))
+      setResetModel(null)
+      void queryClient.invalidateQueries({
+        queryKey: priceMarkupQueryKeys.history(),
+      })
+    },
+    onError: (e: Error) => toast.error(e.message || t('Failed to reset price')),
+  })
+
   const applyMutation = useMutation({
     mutationFn: async () => {
       const opts = await getSystemOptions()
@@ -303,7 +496,12 @@ export function PriceMarkup() {
       for (const u of updates) await updateSystemOption(u)
       // 持久化本次加价记录：合并进现有历史（同模型名以本次为准），供表格核对
       const currentHistory = parseMarkupHistory(opts.data ?? [])
-      const newEntries = buildHistoryEntries(plan, Date.now())
+      const newEntries = buildHistoryEntries(
+        plan,
+        Date.now(),
+        current,
+        currentHistory
+      )
       await updateSystemOption({
         key: MARKUP_HISTORY_OPTION_KEY,
         value: mergeMarkupHistory(currentHistory, newEntries),
@@ -397,7 +595,7 @@ export function PriceMarkup() {
             </AlertDescription>
           </Alert>
 
-          <div className='flex flex-col gap-2'>
+          <div className='flex flex-col gap-3'>
             <div className='text-sm font-medium'>
               {t('Applied markup record')}
             </div>
@@ -415,18 +613,23 @@ export function PriceMarkup() {
                 </AlertDescription>
               </Alert>
             ) : (
-              <div className='overflow-x-auto rounded-lg border'>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{t('Model list')}</TableHead>
-                      <TableHead>{t('Last synced channel price')}</TableHead>
-                      <TableHead>{t('Batch markup')}</TableHead>
-                      <TableHead>{t('Current system channel price')}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {historyRows.map(([model, entry]) => {
+              historyBuckets.map((b) => (
+                <Card key={b.vendor || '__other__'}>
+                  <CardHeader className='gap-3'>
+                    <div className='flex items-center gap-2 text-sm font-medium'>
+                      {b.vendor ? (
+                        <span className='flex size-4 shrink-0 items-center justify-center'>
+                          {getLobeIcon(vendorIndex.vendorIcon.get(b.vendor), 16)}
+                        </span>
+                      ) : null}
+                      {b.vendor || t('Other')}
+                      <Badge variant='secondary'>
+                        {t('{{count}} models', { count: b.entries.length })}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className='flex flex-col gap-1'>
+                    {b.entries.map(([model, entry]) => {
                       const currentValue =
                         entry.billing === 'price'
                           ? currentMaps.ModelPrice[model]
@@ -441,36 +644,153 @@ export function PriceMarkup() {
                         currentValue !== undefined &&
                         expected !== undefined &&
                         currentValue !== expected
+                      const isEditing = editingModel === model
+                      const isSavingThis =
+                        (editPctMutation.isPending &&
+                          editPctMutation.variables?.model === model) ||
+                        (editPriceMutation.isPending &&
+                          editPriceMutation.variables?.model === model)
+                      const canEditPrice = entry.billing !== 'expr'
                       return (
-                        <TableRow key={model}>
-                          <TableCell>
-                            <span className='font-medium'>{model}</span>
-                            <Badge variant='outline' className='ml-2'>
-                              {entry.vendor || t('Other')}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className='tabular-nums'>
+                        <div
+                          key={model}
+                          className='border-border/60 flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2'
+                        >
+                          <span className='min-w-0 truncate text-sm font-medium'>
+                            {model}
+                          </span>
+                          <div className='text-muted-foreground flex flex-wrap items-center gap-1.5 text-xs tabular-nums'>
                             {entry.billing === 'expr' ? (
                               <span
-                                className='block max-w-64 truncate font-mono text-[11px]'
+                                className='block max-w-40 truncate font-mono'
                                 title={entry.exprBefore}
                               >
                                 {entry.exprBefore}
                               </span>
                             ) : (
-                              entry.upstreamPrice
+                              <span>{entry.upstreamPrice}</span>
                             )}
-                            <span className='text-muted-foreground ml-1 text-[11px]'>
+                            <span className='text-[11px] opacity-70'>
                               ({t('from')} {stripChannelId(entry.sourceChannel)})
                             </span>
-                          </TableCell>
-                          <TableCell className='tabular-nums'>
-                            +{entry.pct}%
-                          </TableCell>
-                          <TableCell className='tabular-nums'>
+                            <span>→</span>
+                            {isEditing ? (
+                              <span className='inline-flex items-center gap-1'>
+                                {canEditPrice ? (
+                                  <span className='border-border/60 inline-flex overflow-hidden rounded-md border'>
+                                    <button
+                                      type='button'
+                                      aria-label={t('Markup %')}
+                                      disabled={isSavingThis}
+                                      onClick={() => {
+                                        setEditMode('pct')
+                                        setEditDraft(String(entry.pct))
+                                      }}
+                                      className={
+                                        'px-1.5 py-0.5 text-[11px] ' +
+                                        (editMode === 'pct'
+                                          ? 'bg-muted text-foreground font-medium'
+                                          : 'text-muted-foreground')
+                                      }
+                                    >
+                                      %
+                                    </button>
+                                    <button
+                                      type='button'
+                                      aria-label={t('Price')}
+                                      disabled={isSavingThis}
+                                      onClick={() => {
+                                        setEditMode('price')
+                                        setEditDraft(
+                                          String(currentValue ?? entry.appliedResult)
+                                        )
+                                      }}
+                                      className={
+                                        'border-border/60 border-l px-1.5 py-0.5 text-[11px] ' +
+                                        (editMode === 'price'
+                                          ? 'bg-muted text-foreground font-medium'
+                                          : 'text-muted-foreground')
+                                      }
+                                    >
+                                      ¥
+                                    </button>
+                                  </span>
+                                ) : null}
+                                <span className='relative'>
+                                  <Input
+                                    type='number'
+                                    value={editDraft}
+                                    onChange={(e) => setEditDraft(e.target.value)}
+                                    disabled={isSavingThis}
+                                    className={
+                                      editMode === 'pct'
+                                        ? 'h-7 w-16 pr-5 text-xs'
+                                        : 'h-7 w-20 text-xs'
+                                    }
+                                    autoFocus
+                                  />
+                                  {editMode === 'pct' ? (
+                                    <Percent className='pointer-events-none absolute top-1/2 right-1.5 size-2.5 -translate-y-1/2' />
+                                  ) : null}
+                                </span>
+                                <Button
+                                  size='icon-xs'
+                                  variant='ghost'
+                                  aria-label={t('Save')}
+                                  disabled={isSavingThis}
+                                  onClick={() => {
+                                    if (editMode === 'price') {
+                                      editPriceMutation.mutate({
+                                        model,
+                                        price: Number(editDraft) || 0,
+                                      })
+                                    } else {
+                                      editPctMutation.mutate({
+                                        model,
+                                        pct: Number(editDraft) || 0,
+                                      })
+                                    }
+                                  }}
+                                >
+                                  {isSavingThis ? (
+                                    <Loader2 className='size-3.5 animate-spin' />
+                                  ) : (
+                                    <Check className='size-3.5' />
+                                  )}
+                                </Button>
+                                <Button
+                                  size='icon-xs'
+                                  variant='ghost'
+                                  aria-label={t('Cancel')}
+                                  disabled={isSavingThis}
+                                  onClick={() => setEditingModel(null)}
+                                >
+                                  <X className='size-3.5' />
+                                </Button>
+                              </span>
+                            ) : (
+                              <span className='inline-flex items-center gap-0.5'>
+                                <span className='text-foreground font-medium'>
+                                  +{entry.pct}%
+                                </span>
+                                <Button
+                                  size='icon-xs'
+                                  variant='ghost'
+                                  aria-label={t('Edit')}
+                                  onClick={() => {
+                                    setEditingModel(model)
+                                    setEditMode('pct')
+                                    setEditDraft(String(entry.pct))
+                                  }}
+                                >
+                                  <Pencil className='size-3 opacity-60' />
+                                </Button>
+                              </span>
+                            )}
+                            <span>→</span>
                             {entry.billing === 'expr' ? (
                               <span
-                                className='block max-w-64 truncate font-mono text-[11px]'
+                                className='block max-w-40 truncate font-mono'
                                 title={String(currentValue ?? '')}
                               >
                                 {currentValue ?? t('(cleared)')}
@@ -478,7 +798,9 @@ export function PriceMarkup() {
                             ) : (
                               <span
                                 className={
-                                  drifted ? 'text-amber-600 dark:text-amber-500' : ''
+                                  drifted
+                                    ? 'text-amber-600 dark:text-amber-500'
+                                    : 'text-foreground'
                                 }
                               >
                                 {currentValue ?? t('(cleared)')}
@@ -487,18 +809,27 @@ export function PriceMarkup() {
                             {drifted ? (
                               <Badge
                                 variant='outline'
-                                className='ml-2 border-amber-500 text-amber-600 dark:text-amber-500'
+                                className='border-amber-500 text-amber-600 dark:text-amber-500'
                               >
                                 {t('Changed since')}
                               </Badge>
                             ) : null}
-                          </TableCell>
-                        </TableRow>
+                            <Button
+                              size='icon-xs'
+                              variant='ghost'
+                              aria-label={t('Reset')}
+                              disabled={isSavingThis || resetMutation.isPending}
+                              onClick={() => setResetModel(model)}
+                            >
+                              <RotateCcw className='size-3 opacity-60' />
+                            </Button>
+                          </div>
+                        </div>
                       )
                     })}
-                  </TableBody>
-                </Table>
-              </div>
+                  </CardContent>
+                </Card>
+              ))
             )}
           </div>
 
@@ -530,13 +861,13 @@ export function PriceMarkup() {
                   "When the upstream's /api/pricing response includes a group_ratio (that request is already authenticated with this channel's own API key, so it reflects which group YOUR key falls under), all detected groups are listed below — pick the one that matches your account, or enter the factor manually. Nothing is pre-filled automatically."
                 )}
               </p>
-              <div className='flex flex-col gap-2'>
+              <div className='grid grid-cols-[10rem_1fr_6rem_auto] items-center gap-x-3 gap-y-2'>
                 {selectedChannels.map((ch) => {
                   const groups = detectedGroupRatios[ch.id]
                   const choice = channelGroupChoice[ch.id] ?? ''
                   return (
-                    <div key={ch.id} className='flex flex-wrap items-center gap-2'>
-                      <span className='text-muted-foreground w-40 shrink-0 truncate text-xs'>
+                    <Fragment key={ch.id}>
+                      <span className='text-muted-foreground truncate text-xs'>
                         {ch.name}
                       </span>
                       {groups ? (
@@ -557,7 +888,7 @@ export function PriceMarkup() {
                             }
                           }}
                           disabled={busy}
-                          className='h-8 min-w-44'
+                          className='h-8 w-full'
                         >
                           <NativeSelectOption value='' disabled>
                             {t('Select a detected group…')}
@@ -571,7 +902,9 @@ export function PriceMarkup() {
                             {t('Manual entry')}
                           </NativeSelectOption>
                         </NativeSelect>
-                      ) : null}
+                      ) : (
+                        <span />
+                      )}
                       <Input
                         type='number'
                         placeholder='1'
@@ -588,14 +921,16 @@ export function PriceMarkup() {
                           }))
                         }}
                         disabled={busy}
-                        className='h-8 w-24'
+                        className='h-8 w-full'
                       />
                       {choice ? (
-                        <Badge variant='secondary' className='shrink-0'>
+                        <Badge variant='secondary' className='justify-self-start'>
                           {t('Confirmed: {{group}}', { group: choice })}
                         </Badge>
-                      ) : null}
-                    </div>
+                      ) : (
+                        <span />
+                      )}
+                    </Fragment>
                   )
                 })}
               </div>
@@ -678,10 +1013,10 @@ export function PriceMarkup() {
                     {b.rows.map((r) => (
                       <div
                         key={r.model}
-                        className='border-border/60 flex flex-col gap-1 rounded-md border px-3 py-1.5 text-xs'
+                        className='border-border/60 flex flex-col gap-1 rounded-md border px-3 py-2 text-xs'
                       >
                         <div className='flex flex-wrap items-center justify-between gap-2'>
-                          <span className='min-w-0 flex-1 truncate font-medium'>
+                          <span className='min-w-0 flex-1 truncate text-sm font-medium'>
                             {r.model}
                             <Badge variant='outline' className='ml-2'>
                               {r.billing === 'price'
@@ -745,7 +1080,7 @@ export function PriceMarkup() {
                             </NativeSelect>
                           </div>
                         ) : (
-                          <span className='text-muted-foreground'>
+                          <span className='text-muted-foreground text-[11px]'>
                             {t('Source:')} {stripChannelId(r.sourceChannel)}
                           </span>
                         )}
@@ -777,6 +1112,36 @@ export function PriceMarkup() {
           onChannelEndpointsChange={setChannelEndpoints}
           onConfirm={handleConfirmChannels}
         />
+
+        <AlertDialog
+          open={resetModel !== null}
+          onOpenChange={(open) => !open && setResetModel(null)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t('Are you sure?')}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {t(
+                  "Reset {{model}}'s price back to what it was before this tool first synced it? It will be removed from the applied markup record.",
+                  { model: resetModel }
+                )}{' '}
+                {t('This action cannot be undone.')}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={resetMutation.isPending}>
+                {t('Cancel')}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                variant='destructive'
+                disabled={resetMutation.isPending}
+                onClick={() => resetModel && resetMutation.mutate(resetModel)}
+              >
+                {resetMutation.isPending ? t('Resetting...') : t('Reset')}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </SectionPageLayout.Content>
     </SectionPageLayout>
   )

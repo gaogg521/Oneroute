@@ -53,6 +53,8 @@ export type MarkupRow = {
   exprAfter?: string
   /** 该行基准价实际取自哪个渠道键（如「得物国内模型渠道(1)」），供核对/多渠道场景排查 */
   sourceChannel: string
+  /** 应用加价时实际生效的渠道换算系数（默认 1），供后续单独编辑加价%时重新计算 */
+  channelFactor: number
   /** 多个可信渠道对同一模型报价不一致时，列出全部候选（不可信的占位值已提前排除） */
   conflict?: Array<{ channelKey: string; value: number }>
 }

@@ -230,6 +230,7 @@ export function buildMarkupPlan(
             exprBefore: billingExprEff.value,
             exprAfter: scaled,
             sourceChannel: billingExprEff.channelKey,
+            channelFactor,
           })
           continue
         }
@@ -245,15 +246,18 @@ export function buildMarkupPlan(
     let billing: 'ratio' | 'price'
     let base: number
     let sourceChannel: string
+    let channelFactor: number
     let conflict: Array<{ channelKey: string; value: number }> | undefined
     if (priceBaseEff !== undefined) {
       billing = 'price'
-      base = priceBaseEff.value * factorOf(priceBaseEff.channelKey)
+      channelFactor = factorOf(priceBaseEff.channelKey)
+      base = priceBaseEff.value * channelFactor
       sourceChannel = priceBaseEff.channelKey
       conflict = detectConflict(diff.model_price, channelNames)
     } else if (ratioBaseEff !== undefined) {
       billing = 'ratio'
-      base = ratioBaseEff.value * factorOf(ratioBaseEff.channelKey)
+      channelFactor = factorOf(ratioBaseEff.channelKey)
+      base = ratioBaseEff.value * channelFactor
       sourceChannel = ratioBaseEff.channelKey
       conflict = detectConflict(diff.model_ratio, channelNames)
     } else {
@@ -269,6 +273,7 @@ export function buildMarkupPlan(
       pct,
       result,
       sourceChannel,
+      channelFactor,
       conflict,
     }
 
