@@ -274,6 +274,115 @@ function buildDetailSegments(
   return segments
 }
 
+function getEffectiveGroupRatioForFormula(
+  other: LogOtherData
+): { ratio: number; labelKey: string } | null {
+  const userGroupRatio = other.user_group_ratio
+  const isUserGroup =
+    userGroupRatio != null &&
+    Number.isFinite(userGroupRatio) &&
+    userGroupRatio !== -1
+  const effectiveRatio = isUserGroup ? userGroupRatio : other.group_ratio
+  if (effectiveRatio == null || !Number.isFinite(effectiveRatio)) return null
+  return {
+    ratio: effectiveRatio,
+    labelKey: isUserGroup ? 'User Exclusive Ratio' : 'Group Ratio',
+  }
+}
+
+/**
+ * Build a full, always-visible billing formula sentence (e.g. "(Input 5
+ * tokens / 1M × $2 + Output 16 tokens / 1M × $3) × Group Ratio 0.7 = $0.000041")
+ * so the cost breakdown is readable without opening the details dialog.
+ * Returns null for log types/edge cases that don't map to a token/call
+ * formula (audit, login, refund, violation fee, unmatched tiered expr).
+ */
+function buildBillingFormula(
+  log: UsageLog,
+  other: LogOtherData | null,
+  t: (key: string, opts?: Record<string, unknown>) => string
+): string | null {
+  if (log.type !== 2 || !other) return null
+  if (isViolationFeeLog(other)) return null
+
+  const priceOpts = { digitsLarge: 4, digitsSmall: 6, abbreviate: false }
+  const fmt = (price: number) => formatBillingCurrencyFromUSD(price, priceOpts)
+  const total = formatLogQuota(log.quota)
+
+  const gr = getEffectiveGroupRatioForFormula(other)
+  const ratioSuffix =
+    gr && gr.ratio !== 1
+      ? ` × ${t(gr.labelKey)} ${formatRatioCompact(gr.ratio)}`
+      : ''
+
+  if (isPerCallBilling(other.model_price)) {
+    return `${t('Per-call')} ${fmt(other.model_price!)}${ratioSuffix} = ${total}`
+  }
+
+  if (other.billing_mode === 'tiered_expr') {
+    const summary = getTieredBillingSummary(other)
+    if (!summary) return null
+    const tierLabel = summary.tier.label || t('Default')
+    const prices = summary.priceEntries
+      .map((entry) => `${t(entry.shortLabel)} ${fmt(entry.price)}`)
+      .join(' · ')
+    if (!prices) return null
+    return `${tierLabel} · ${prices} = ${total}`
+  }
+
+  if (other.model_ratio == null) return null
+
+  const inputPriceUSD = other.model_ratio * 2.0
+  const outputPriceUSD =
+    other.completion_ratio != null
+      ? inputPriceUSD * other.completion_ratio
+      : null
+
+  const cacheRead = other.cache_tokens || 0
+  const cacheWrite5m = other.cache_creation_tokens_5m || 0
+  const cacheWrite1h = other.cache_creation_tokens_1h || 0
+  const cacheWriteFlat =
+    cacheWrite5m === 0 && cacheWrite1h === 0
+      ? other.cache_creation_tokens || 0
+      : 0
+
+  const promptTokens = log.prompt_tokens || 0
+  const completionTokens = log.completion_tokens || 0
+  const plainInputTokens = Math.max(promptTokens - cacheRead, 0)
+
+  const terms: string[] = [
+    `${t('Input')} ${plainInputTokens.toLocaleString()} tokens / 1M × ${fmt(inputPriceUSD)}`,
+  ]
+
+  if (cacheRead > 0 && other.cache_ratio != null) {
+    terms.push(
+      `${t('Cache Read')} ${cacheRead.toLocaleString()} tokens / 1M × ${fmt(inputPriceUSD * other.cache_ratio)}`
+    )
+  }
+  if (cacheWriteFlat > 0 && other.cache_creation_ratio != null) {
+    terms.push(
+      `${t('Cache Write')} ${cacheWriteFlat.toLocaleString()} tokens / 1M × ${fmt(inputPriceUSD * other.cache_creation_ratio)}`
+    )
+  }
+  if (cacheWrite5m > 0 && other.cache_creation_ratio != null) {
+    terms.push(
+      `${t('Cache Write (5m)')} ${cacheWrite5m.toLocaleString()} tokens / 1M × ${fmt(inputPriceUSD * other.cache_creation_ratio)}`
+    )
+  }
+  if (cacheWrite1h > 0 && other.cache_creation_ratio_1h != null) {
+    terms.push(
+      `${t('Cache Write (1h)')} ${cacheWrite1h.toLocaleString()} tokens / 1M × ${fmt(inputPriceUSD * other.cache_creation_ratio_1h)}`
+    )
+  }
+  if (outputPriceUSD != null) {
+    terms.push(
+      `${t('Output')} ${completionTokens.toLocaleString()} tokens / 1M × ${fmt(outputPriceUSD)}`
+    )
+  }
+
+  return `(${terms.join(' + ')})${ratioSuffix} = ${total}`
+}
+
 export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
   const { t } = useTranslation()
   const columns: ColumnDef<UsageLog>[] = [
@@ -817,6 +926,36 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         const log = row.original
         const other = parseLogOther(log.other)
 
+        const formula = buildBillingFormula(log, other, t)
+
+        if (formula) {
+          return (
+            <>
+              <button
+                type='button'
+                className='group flex max-w-[320px] flex-col items-start gap-0.5 text-left text-xs whitespace-normal'
+                onClick={() => setDialogOpen(true)}
+                title={t('Click to view full details')}
+              >
+                <span className='text-foreground wrap-break-word leading-snug whitespace-normal group-hover:underline'>
+                  {formula}
+                </span>
+                {other?.is_system_prompt_overwritten && (
+                  <span className='text-red-600 dark:text-red-400'>
+                    {t('System Prompt Override')}
+                  </span>
+                )}
+              </button>
+              <DetailsDialog
+                log={log}
+                isAdmin={isAdmin}
+                open={dialogOpen}
+                onOpenChange={setDialogOpen}
+              />
+            </>
+          )
+        }
+
         const segments = buildDetailSegments(log, other, t)
         const primary = segments[0]
         const hasMore = segments.length > 1
@@ -825,7 +964,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
           <>
             <button
               type='button'
-              className='group flex max-w-[200px] items-center gap-1 text-left text-xs'
+              className='group flex max-w-[320px] items-center gap-1 text-left text-xs'
               onClick={() => setDialogOpen(true)}
               title={t('Click to view full details')}
             >
@@ -864,8 +1003,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
           </>
         )
       },
-      size: 180,
-      maxSize: 200,
+      size: 320,
     }
   )
 
