@@ -130,7 +130,8 @@ web/             前端页面容器目录
 
 
 ### 规则9：与官方上游仓库（QuantumNous/new-api）同步规范
-本仓库的 git 远端 `origin` 就是**本派生仓库自己的远端**（`gaogg521/Oneroute`，对应生产环境 `ai.oneroute.vip`），日常提交、`git push origin main` 都是推自己的仓库，无需额外确认或顾虑。
+本仓库目前只有我（仓库所有者）一个人开发，没有其他协作者，不存在"推送覆盖他人未合并代码"的风险。
+本仓库的 git 远端 `origin` 就是**本派生仓库自己的远端**（`gaogg521/Oneroute`，对应生产环境 `ai.oneroute.vip`），日常提交、`git push origin main` 都是推自己的仓库，无需额外确认或顾虑——**commit 完成后可以直接 `git push origin main`，不用每次都单独征求同意**。
 官方上游仓库是 `QuantumNous/new-api`，与 `origin` 是两个不同的远端——如需拉取上游更新，需单独添加（如未添加：`git remote add upstream https://github.com/QuantumNous/new-api.git`），从 `upstream/main` 合并进本仓库后再推回 `origin main`。将上游main分支代码合并至本派生仓库时，严格按以下四条优先级执行：
 1. **保留本地 `CLAUDE.md` 文件**：绝不直接覆盖上游版本，本文件记录派生仓库专属开发规范，包含本条同步规则。
 2. **不可移除本地新增功能**：团队管理 `/team`、新版企业团队 `/teamv3` & `/admin-teamv3`、蚂蚁支付网关、文档中心 `/docs`、首页改版、模型价格可视化编辑器保存按钮修复等自研功能必须保留。
