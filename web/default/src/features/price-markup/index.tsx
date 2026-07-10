@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Info, Loader2, Percent, RefreshCcw } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -47,6 +47,15 @@ import {
   NativeSelect,
   NativeSelectOption,
 } from '@/components/ui/native-select'
+import { Spinner } from '@/components/ui/spinner'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { getLobeIcon } from '@/lib/lobe-icon'
 
 import {
@@ -56,6 +65,12 @@ import {
   getUpstreamChannels,
   updateSystemOption,
 } from './api'
+import {
+  buildHistoryEntries,
+  MARKUP_HISTORY_OPTION_KEY,
+  mergeMarkupHistory,
+  parseMarkupHistory,
+} from './lib/history'
 import {
   buildMarkupPlan,
   buildOptionUpdates,
@@ -80,6 +95,7 @@ type VendorBucket = { vendor: string; rows: MarkupRow[] }
 
 export function PriceMarkup() {
   const { t } = useTranslation()
+  const queryClient = useQueryClient()
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [selectedChannelIds, setSelectedChannelIds] = useState<number[]>([])
@@ -256,18 +272,51 @@ export function PriceMarkup() {
     return ordered
   }, [plan.rows, vendorIndex.vendorOrder])
 
+  // 持久化的加价记录（近一次拉取的渠道价 + 加价%）+ 当前系统实际生效价格（同一份
+  // getSystemOptions 派生两种视图，"当前系统渠道价格"永远读最新，不受记录时效影响）
+  const historyQuery = useQuery({
+    queryKey: priceMarkupQueryKeys.history(),
+    queryFn: getSystemOptions,
+  })
+  const history = useMemo(
+    () => parseMarkupHistory(historyQuery.data?.data ?? []),
+    [historyQuery.data]
+  )
+  const currentMaps = useMemo(
+    () => parseOptionMaps(historyQuery.data?.data ?? []),
+    [historyQuery.data]
+  )
+  const historyRows = useMemo(
+    () =>
+      Object.entries(history).sort(
+        (a, b) =>
+          a[1].vendor.localeCompare(b[1].vendor) || a[0].localeCompare(b[0])
+      ),
+    [history]
+  )
+
   const applyMutation = useMutation({
     mutationFn: async () => {
       const opts = await getSystemOptions()
       const current = parseOptionMaps(opts.data ?? [])
       const updates = buildOptionUpdates(plan, current)
       for (const u of updates) await updateSystemOption(u)
+      // 持久化本次加价记录：合并进现有历史（同模型名以本次为准），供表格核对
+      const currentHistory = parseMarkupHistory(opts.data ?? [])
+      const newEntries = buildHistoryEntries(plan, Date.now())
+      await updateSystemOption({
+        key: MARKUP_HISTORY_OPTION_KEY,
+        value: mergeMarkupHistory(currentHistory, newEntries),
+      })
       return updates.length
     },
     onSuccess: () => {
       toast.success(
         t('Applied markup to {{count}} models', { count: plan.rows.length })
       )
+      void queryClient.invalidateQueries({
+        queryKey: priceMarkupQueryKeys.history(),
+      })
     },
     onError: (e: Error) => toast.error(e.message || t('Failed to apply markup')),
   })
@@ -347,6 +396,111 @@ export function PriceMarkup() {
               </ul>
             </AlertDescription>
           </Alert>
+
+          <div className='flex flex-col gap-2'>
+            <div className='text-sm font-medium'>
+              {t('Applied markup record')}
+            </div>
+            {historyQuery.isLoading ? (
+              <div className='flex items-center justify-center py-8'>
+                <Spinner className='size-5' />
+              </div>
+            ) : historyRows.length === 0 ? (
+              <Alert>
+                <Info className='h-4 w-4' />
+                <AlertDescription>
+                  {t(
+                    'No markup has been applied yet. This table fills in and persists after you click "Apply markup" below.'
+                  )}
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <div className='overflow-x-auto rounded-lg border'>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>{t('Model list')}</TableHead>
+                      <TableHead>{t('Last synced channel price')}</TableHead>
+                      <TableHead>{t('Batch markup')}</TableHead>
+                      <TableHead>{t('Current system channel price')}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {historyRows.map(([model, entry]) => {
+                      const currentValue =
+                        entry.billing === 'price'
+                          ? currentMaps.ModelPrice[model]
+                          : entry.billing === 'expr'
+                            ? currentMaps.BillingExpr[model]
+                            : currentMaps.ModelRatio[model]
+                      const expected =
+                        entry.billing === 'expr'
+                          ? entry.exprAfter
+                          : entry.appliedResult
+                      const drifted =
+                        currentValue !== undefined &&
+                        expected !== undefined &&
+                        currentValue !== expected
+                      return (
+                        <TableRow key={model}>
+                          <TableCell>
+                            <span className='font-medium'>{model}</span>
+                            <Badge variant='outline' className='ml-2'>
+                              {entry.vendor || t('Other')}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className='tabular-nums'>
+                            {entry.billing === 'expr' ? (
+                              <span
+                                className='block max-w-64 truncate font-mono text-[11px]'
+                                title={entry.exprBefore}
+                              >
+                                {entry.exprBefore}
+                              </span>
+                            ) : (
+                              entry.upstreamPrice
+                            )}
+                            <span className='text-muted-foreground ml-1 text-[11px]'>
+                              ({t('from')} {stripChannelId(entry.sourceChannel)})
+                            </span>
+                          </TableCell>
+                          <TableCell className='tabular-nums'>
+                            +{entry.pct}%
+                          </TableCell>
+                          <TableCell className='tabular-nums'>
+                            {entry.billing === 'expr' ? (
+                              <span
+                                className='block max-w-64 truncate font-mono text-[11px]'
+                                title={String(currentValue ?? '')}
+                              >
+                                {currentValue ?? t('(cleared)')}
+                              </span>
+                            ) : (
+                              <span
+                                className={
+                                  drifted ? 'text-amber-600 dark:text-amber-500' : ''
+                                }
+                              >
+                                {currentValue ?? t('(cleared)')}
+                              </span>
+                            )}
+                            {drifted ? (
+                              <Badge
+                                variant='outline'
+                                className='ml-2 border-amber-500 text-amber-600 dark:text-amber-500'
+                              >
+                                {t('Changed since')}
+                              </Badge>
+                            ) : null}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
 
           <div className='flex flex-wrap items-end gap-3'>
             <div className='flex flex-col gap-1.5'>

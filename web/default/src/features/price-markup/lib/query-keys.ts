@@ -22,4 +22,6 @@ export const priceMarkupQueryKeys = {
   all: ['price-markup'] as const,
   channels: () => [...priceMarkupQueryKeys.all, 'channels'] as const,
   pricing: () => [...priceMarkupQueryKeys.all, 'pricing'] as const,
+  /** 持久化的加价记录 + 当前系统价格（同一份 getSystemOptions 派生两种视图） */
+  history: () => [...priceMarkupQueryKeys.all, 'history'] as const,
 }
