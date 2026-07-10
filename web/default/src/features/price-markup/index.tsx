@@ -94,9 +94,14 @@ export function PriceMarkup() {
   const [channelFactorInput, setChannelFactorInput] = useState<
     Record<number, string>
   >({})
-  // 记录哪些渠道的系数是从上游 group_ratio 自动读取的（用于 UI 提示"自动检测"）
-  const [autoDetectedFactor, setAutoDetectedFactor] = useState<
-    Record<number, number>
+  // 从上游 /api/pricing 检测到的分组倍率候选（channel id -> {分组名: 倍率}），
+  // 仅用于渲染下拉供管理员挑选，不做任何静默预填
+  const [detectedGroupRatios, setDetectedGroupRatios] = useState<
+    Record<number, Record<string, number>>
+  >({})
+  // 管理员在下拉里手动确认选择的分组（channel id -> 分组名；空字符串=手动输入模式）
+  const [channelGroupChoice, setChannelGroupChoice] = useState<
+    Record<number, string>
   >({})
   // 多渠道同一模型报价冲突时，管理员手动指定用哪个渠道的价格作为基准（model -> channelKey）
   const [channelOverride, setChannelOverride] = useState<
@@ -157,32 +162,18 @@ export function PriceMarkup() {
       )
       setChannelOverride({})
       // 该次抓取已用渠道自身 API Key 认证上游 /api/pricing，上游随附返回的
-      // group_ratio 就是"我方这个渠道在上游落在哪个分组"，自动预填换算系数
-      // （只填未手动改过的渠道，不覆盖用户已输入的值）。
-      const detected: Record<number, number> = {}
+      // group_ratio 就是"我方这个渠道在上游落在哪个分组"。不同分组倍率可能相差
+      // 很大（如 0.5~0.7），不做静默猜测/预填——只记录检测到的候选，交给管理员
+      // 在下拉里亲眼看到全部选项后手动确认选哪个，选了才写入换算系数。
+      const detected: Record<number, Record<string, number>> = {}
       for (const u of variables.upstreams) {
         const gr = data.data.test_results.find(
           (r) => r.name === `${u.name}(${u.id})`
         )?.group_ratio
-        if (!gr) continue
-        const keys = Object.keys(gr)
-        const suggested =
-          gr.default !== undefined
-            ? gr.default
-            : keys.length === 1
-              ? gr[keys[0]]
-              : undefined
-        if (suggested !== undefined) detected[u.id] = suggested
+        if (gr && Object.keys(gr).length > 0) detected[u.id] = gr
       }
-      setAutoDetectedFactor(detected)
-      setChannelFactorInput((prev) => {
-        const next = { ...prev }
-        for (const [idStr, value] of Object.entries(detected)) {
-          const id = Number(idStr)
-          if (next[id] === undefined) next[id] = String(value)
-        }
-        return next
-      })
+      setDetectedGroupRatios(detected)
+      setChannelGroupChoice({})
       const errs = data.data.test_results.filter((r) => r.status === 'error')
       if (errs.length > 0) {
         toast.warning(
@@ -382,35 +373,72 @@ export function PriceMarkup() {
               </div>
               <p className='text-muted-foreground text-xs'>
                 {t(
-                  "Auto-detected when the upstream's /api/pricing response includes a group_ratio (that request is already authenticated with this channel's own API key, so it reflects which group YOUR key falls under). Edit if wrong, or fill manually when it can't be detected."
+                  "When the upstream's /api/pricing response includes a group_ratio (that request is already authenticated with this channel's own API key, so it reflects which group YOUR key falls under), all detected groups are listed below — pick the one that matches your account, or enter the factor manually. Nothing is pre-filled automatically."
                 )}
               </p>
-              <div className='flex flex-wrap gap-3'>
+              <div className='flex flex-col gap-2'>
                 {selectedChannels.map((ch) => {
-                  const isAutoValue =
-                    autoDetectedFactor[ch.id] !== undefined &&
-                    channelFactorInput[ch.id] === String(autoDetectedFactor[ch.id])
+                  const groups = detectedGroupRatios[ch.id]
+                  const choice = channelGroupChoice[ch.id] ?? ''
                   return (
-                    <div key={ch.id} className='flex items-center gap-2'>
-                      <span className='text-muted-foreground text-xs'>
+                    <div key={ch.id} className='flex flex-wrap items-center gap-2'>
+                      <span className='text-muted-foreground w-40 shrink-0 truncate text-xs'>
                         {ch.name}
                       </span>
+                      {groups ? (
+                        <NativeSelect
+                          size='sm'
+                          value={choice}
+                          onChange={(e) => {
+                            const g = e.target.value
+                            setChannelGroupChoice((prev) => ({
+                              ...prev,
+                              [ch.id]: g === '__manual__' ? '' : g,
+                            }))
+                            if (g && g !== '__manual__') {
+                              setChannelFactorInput((prev) => ({
+                                ...prev,
+                                [ch.id]: String(groups[g]),
+                              }))
+                            }
+                          }}
+                          disabled={busy}
+                          className='h-8 min-w-44'
+                        >
+                          <NativeSelectOption value='' disabled>
+                            {t('Select a detected group…')}
+                          </NativeSelectOption>
+                          {Object.entries(groups).map(([g, ratio]) => (
+                            <NativeSelectOption key={g} value={g}>
+                              {g} ({ratio}x)
+                            </NativeSelectOption>
+                          ))}
+                          <NativeSelectOption value='__manual__'>
+                            {t('Manual entry')}
+                          </NativeSelectOption>
+                        </NativeSelect>
+                      ) : null}
                       <Input
                         type='number'
                         placeholder='1'
                         value={channelFactorInput[ch.id] ?? ''}
-                        onChange={(e) =>
+                        onChange={(e) => {
                           setChannelFactorInput((prev) => ({
                             ...prev,
                             [ch.id]: e.target.value,
                           }))
-                        }
+                          // 手动改动输入框即视为脱离下拉选择，避免显示误导性的"已选某分组"状态
+                          setChannelGroupChoice((prev) => ({
+                            ...prev,
+                            [ch.id]: '',
+                          }))
+                        }}
                         disabled={busy}
                         className='h-8 w-24'
                       />
-                      {isAutoValue ? (
+                      {choice ? (
                         <Badge variant='secondary' className='shrink-0'>
-                          {t('Auto-detected')}
+                          {t('Confirmed: {{group}}', { group: choice })}
                         </Badge>
                       ) : null}
                     </div>

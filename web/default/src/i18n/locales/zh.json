@@ -5502,7 +5502,11 @@
     "Source channel:": "来源渠道:",
     "Source:": "来源:",
     "Auto-detected": "已自动检测",
-    "Auto-detected when the upstream's /api/pricing response includes a group_ratio (that request is already authenticated with this channel's own API key, so it reflects which group YOUR key falls under). Edit if wrong, or fill manually when it can't be detected.": "当上游 /api/pricing 响应里带有 group_ratio 时会自动检测（该请求已用本渠道自身 API Key 认证，所以反映的正是你这个渠道在上游落在哪个分组）。检测错了可以改，检测不到时手动填。"
+    "Auto-detected when the upstream's /api/pricing response includes a group_ratio (that request is already authenticated with this channel's own API key, so it reflects which group YOUR key falls under). Edit if wrong, or fill manually when it can't be detected.": "当上游 /api/pricing 响应里带有 group_ratio 时会自动检测（该请求已用本渠道自身 API Key 认证，所以反映的正是你这个渠道在上游落在哪个分组）。检测错了可以改，检测不到时手动填。",
+    "Select a detected group…": "请选择检测到的分组…",
+    "Manual entry": "手动输入",
+    "Confirmed: {{group}}": "已确认: {{group}}",
+    "When the upstream's /api/pricing response includes a group_ratio (that request is already authenticated with this channel's own API key, so it reflects which group YOUR key falls under), all detected groups are listed below — pick the one that matches your account, or enter the factor manually. Nothing is pre-filled automatically.": "当上游 /api/pricing 响应里带有 group_ratio 时（该请求已用本渠道自身 API Key 认证，所以反映的正是你这个渠道在上游落在哪个分组），下面会列出全部检测到的分组——请挑选与你账号匹配的那个，或手动输入系数。不会自动预填任何值。"
   },
   "Confirm Kick": "确认踢出",
   "Are you sure you want to remove": "确定要将",
