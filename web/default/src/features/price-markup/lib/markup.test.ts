@@ -161,6 +161,81 @@ describe('buildMarkupPlan', () => {
     assert.equal(gpt.base, 2.5)
     assert.equal(gpt.result, 2.75)
   })
+
+  test('excludes untrustworthy placeholder ratios (real backend signature: 37.5 + completion_ratio 1)', () => {
+    // Mirrors controller/ratio_sync.go's own "不可信" heuristic: a channel that
+    // never configured a custom price for this model reports the system
+    // fallback (37.5 / completion 1) and is flagged confidence=false. Must be
+    // excluded entirely, not treated as a competing real price.
+    const d: DifferencesMap = {
+      'glm-5': {
+        model_ratio: {
+          current: null,
+          upstreams: { 'apextoken(13)': 0.3, '得物(1)': 37.5 },
+          confidence: { 'apextoken(13)': true, '得物(1)': false },
+        },
+      },
+    }
+    const plan = buildMarkupPlan(d, ['apextoken(13)', '得物(1)'], vendorIndex, 0, {})
+    assert.equal(plan.rows.length, 1)
+    assert.equal(plan.rows[0].base, 0.3) // 得物's untrustworthy 37.5 never considered
+    assert.equal(plan.rows[0].sourceChannel, 'apextoken(13)')
+    assert.equal(plan.rows[0].conflict, undefined) // only one trustworthy candidate -> no conflict
+  })
+
+  test('flags a conflict when >=2 trustworthy channels disagree, and reports sourceChannel', () => {
+    const d: DifferencesMap = {
+      'deepseek-v4-flash': {
+        model_ratio: {
+          current: null,
+          upstreams: { 'apextoken(13)': 0.1, 'memtensor(8)': 0.0715, '得物(1)': 0.5 },
+          confidence: {},
+        },
+      },
+    }
+    const names = ['apextoken(13)', 'memtensor(8)', '得物(1)']
+    const plan = buildMarkupPlan(d, names, vendorIndex, 0, {})
+    const row = plan.rows[0]
+    // default priority = first in channelNames order
+    assert.equal(row.sourceChannel, 'apextoken(13)')
+    assert.equal(row.base, 0.1)
+    assert.equal(row.conflict?.length, 3)
+    assert.deepEqual(
+      new Set(row.conflict?.map((c) => c.value)),
+      new Set([0.1, 0.0715, 0.5])
+    )
+  })
+
+  test('channelOverride forces a specific channel to win for a given model', () => {
+    const d: DifferencesMap = {
+      'deepseek-v4-flash': {
+        model_ratio: {
+          current: null,
+          upstreams: { 'apextoken(13)': 0.1, '得物(1)': 0.5 },
+          confidence: {},
+        },
+      },
+    }
+    const names = ['apextoken(13)', '得物(1)']
+    const plan = buildMarkupPlan(d, names, vendorIndex, 0, {}, {}, {
+      'deepseek-v4-flash': '得物(1)',
+    })
+    const row = plan.rows[0]
+    assert.equal(row.sourceChannel, '得物(1)')
+    assert.equal(row.base, 0.5)
+  })
+
+  test('channelOverride pointing at a channel with no trustworthy data for that model drops the row (no silent fallback)', () => {
+    const d: DifferencesMap = {
+      'model-x': {
+        model_ratio: { current: null, upstreams: { 'a(1)': 1 }, confidence: {} },
+      },
+    }
+    const plan = buildMarkupPlan(d, ['a(1)'], vendorIndex, 0, {}, {}, {
+      'model-x': 'b(2)', // b(2) has no data for model-x at all
+    })
+    assert.equal(plan.rows.length, 0)
+  })
 })
 
 describe('buildOptionUpdates', () => {

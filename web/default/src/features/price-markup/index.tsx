@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Info, Loader2, Percent, RefreshCcw } from 'lucide-react'
+import { AlertTriangle, Info, Loader2, Percent, RefreshCcw } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -43,6 +43,10 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import {
+  NativeSelect,
+  NativeSelectOption,
+} from '@/components/ui/native-select'
 import { getLobeIcon } from '@/lib/lobe-icon'
 
 import {
@@ -59,6 +63,11 @@ import {
 } from './lib/markup'
 import { priceMarkupQueryKeys } from './lib/query-keys'
 import type { MarkupRow } from './types'
+
+/** 「渠道名(id)」→ 只保留渠道名，用于展示 */
+function stripChannelId(channelKey: string): string {
+  return channelKey.replace(/\(\d+\)$/, '')
+}
 
 function defaultEndpoint(channel: UpstreamChannel): string {
   if (channel.id === MODELS_DEV_PRESET_ID) return MODELS_DEV_PRESET_ENDPOINT
@@ -84,6 +93,10 @@ export function PriceMarkup() {
   >([])
   const [channelFactorInput, setChannelFactorInput] = useState<
     Record<number, string>
+  >({})
+  // 多渠道同一模型报价冲突时，管理员手动指定用哪个渠道的价格作为基准（model -> channelKey）
+  const [channelOverride, setChannelOverride] = useState<
+    Record<string, string>
   >({})
   const [globalPct, setGlobalPct] = useState('20')
   const [perVendorPctInput, setPerVendorPctInput] = useState<
@@ -138,6 +151,7 @@ export function PriceMarkup() {
       setSelectedChannels(
         variables.upstreams.map((u) => ({ id: u.id, name: u.name }))
       )
+      setChannelOverride({})
       const errs = data.data.test_results.filter((r) => r.status === 'error')
       if (errs.length > 0) {
         toast.warning(
@@ -185,9 +199,18 @@ export function PriceMarkup() {
         vendorIndex,
         Number(globalPct) || 0,
         perVendorPct,
-        channelFactors
+        channelFactors,
+        channelOverride
       ),
-    [differences, channelNames, vendorIndex, globalPct, perVendorPct, channelFactors]
+    [
+      differences,
+      channelNames,
+      vendorIndex,
+      globalPct,
+      perVendorPct,
+      channelFactors,
+      channelOverride,
+    ]
   )
 
   const buckets: VendorBucket[] = useMemo(() => {
@@ -444,6 +467,14 @@ export function PriceMarkup() {
                                   ? t('Tiered')
                                   : t('Ratio')}
                             </Badge>
+                            {r.conflict ? (
+                              <Badge variant='destructive' className='ml-1'>
+                                <AlertTriangle className='mr-1 h-3 w-3' />
+                                {t('{{count}} channels disagree', {
+                                  count: r.conflict.length,
+                                })}
+                              </Badge>
+                            ) : null}
                           </span>
                           {r.billing === 'expr' ? (
                             <span className='text-muted-foreground shrink-0 tabular-nums'>
@@ -462,6 +493,40 @@ export function PriceMarkup() {
                             </span>
                           )}
                         </div>
+
+                        {r.conflict ? (
+                          <div className='flex flex-wrap items-center gap-2'>
+                            <span className='text-muted-foreground'>
+                              {t('Source channel:')}
+                            </span>
+                            <NativeSelect
+                              size='sm'
+                              value={r.sourceChannel}
+                              onChange={(e) =>
+                                setChannelOverride((prev) => ({
+                                  ...prev,
+                                  [r.model]: e.target.value,
+                                }))
+                              }
+                              disabled={busy}
+                              className='h-7 min-w-40'
+                            >
+                              {r.conflict.map((c) => (
+                                <NativeSelectOption
+                                  key={c.channelKey}
+                                  value={c.channelKey}
+                                >
+                                  {stripChannelId(c.channelKey)} ({c.value})
+                                </NativeSelectOption>
+                              ))}
+                            </NativeSelect>
+                          </div>
+                        ) : (
+                          <span className='text-muted-foreground'>
+                            {t('Source:')} {stripChannelId(r.sourceChannel)}
+                          </span>
+                        )}
+
                         {r.billing === 'expr' ? (
                           <div className='bg-muted/40 flex flex-col gap-0.5 rounded p-1.5 font-mono text-[10px] break-all'>
                             <div className='text-muted-foreground opacity-70 line-through'>

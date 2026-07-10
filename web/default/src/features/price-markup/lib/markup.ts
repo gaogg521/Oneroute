@@ -42,28 +42,53 @@ function round6(n: number): number {
 /** 有效上游值 + 该值来自哪个渠道键（用于按渠道应用换算系数） */
 type EffectiveValue<T> = { value: T; channelKey: string }
 
+/** 该渠道在该字段上是否可信。后端明确标记 false 的（如 model_ratio≈37.5 且
+ * completion_ratio≈1 的系统兜底占位值）一律排除，不当作候选价格；未标记的默认可信。 */
+function isTrusted(diff: RatioDifference, channelKey: string): boolean {
+  return diff.confidence?.[channelKey] !== false
+}
+
 /**
  * 取某模型某 ratioType 在所选渠道中的「有效上游值」：
- * 按 channelNames 顺序，取第一个是数字的上游值；若上游标记 'same'（与本地相同），
- * 则回退到 diff.current（本地当前值）。都没有则返回 undefined。
- * 同时返回该值来自哪个渠道键，供调用方查找该渠道的换算系数。
+ * 按 channelNames 顺序，取第一个可信的数字上游值；若上游标记 'same'（与本地相同），
+ * 则回退到 diff.current（本地当前值）。不可信（confidence=false，如渠道未配置该模型、
+ * 返回的是系统兜底占位值）的候选一律跳过，不参与选取。都没有则返回 undefined。
+ * 同时返回该值来自哪个渠道键，供调用方查找该渠道的换算系数 / 强制指定来源。
  */
 export function effectiveUpstreamNumber(
   diff: RatioDifference | undefined,
-  channelNames: string[]
+  channelNames: string[],
+  forceChannelKey?: string
 ): EffectiveValue<number> | undefined {
   if (!diff) return undefined
+  if (forceChannelKey !== undefined) {
+    const v = diff.upstreams?.[forceChannelKey]
+    if (typeof v === 'number' && isTrusted(diff, forceChannelKey)) {
+      return { value: v, channelKey: forceChannelKey }
+    }
+    if (
+      v === 'same' &&
+      typeof diff.current === 'number' &&
+      isTrusted(diff, forceChannelKey)
+    ) {
+      return { value: diff.current, channelKey: forceChannelKey }
+    }
+    // 指定的渠道对该模型没有可信数据，不回退——避免静默换用别的渠道
+    return undefined
+  }
   // 优先按传入的渠道键顺序取值。注意后端 upstreams 的键是「渠道名(id)」，
   // 与前端可能持有的裸渠道名不一定一致，故下面再兜底扫描所有键。
   for (const ch of channelNames) {
+    if (!isTrusted(diff, ch)) continue
     const v = diff.upstreams?.[ch]
     if (typeof v === 'number') return { value: v, channelKey: ch }
     if (v === 'same' && typeof diff.current === 'number') {
       return { value: diff.current, channelKey: ch }
     }
   }
-  // 兜底：扫描全部上游值，取第一个数字（处理键名格式不匹配 / 'same' 但 current 为 null）
+  // 兜底：扫描全部可信上游值，取第一个数字（处理键名格式不匹配 / 'same' 但 current 为 null）
   for (const [ch, v] of Object.entries(diff.upstreams ?? {})) {
+    if (!isTrusted(diff, ch)) continue
     if (typeof v === 'number') return { value: v, channelKey: ch }
   }
   if (typeof diff.current === 'number') {
@@ -74,10 +99,30 @@ export function effectiveUpstreamNumber(
 
 function effectiveUpstreamString(
   diff: RatioDifference | undefined,
-  channelNames: string[]
+  channelNames: string[],
+  forceChannelKey?: string
 ): EffectiveValue<string> | undefined {
   if (!diff) return undefined
+  if (forceChannelKey !== undefined) {
+    const v = diff.upstreams?.[forceChannelKey]
+    if (
+      typeof v === 'string' &&
+      v !== 'same' &&
+      isTrusted(diff, forceChannelKey)
+    ) {
+      return { value: v, channelKey: forceChannelKey }
+    }
+    if (
+      v === 'same' &&
+      typeof diff.current === 'string' &&
+      isTrusted(diff, forceChannelKey)
+    ) {
+      return { value: diff.current, channelKey: forceChannelKey }
+    }
+    return undefined
+  }
   for (const ch of channelNames) {
+    if (!isTrusted(diff, ch)) continue
     const v = diff.upstreams?.[ch]
     if (typeof v === 'string' && v !== 'same') return { value: v, channelKey: ch }
     if (v === 'same' && typeof diff.current === 'string') {
@@ -85,9 +130,31 @@ function effectiveUpstreamString(
     }
   }
   for (const [ch, v] of Object.entries(diff.upstreams ?? {})) {
+    if (!isTrusted(diff, ch)) continue
     if (typeof v === 'string' && v !== 'same') return { value: v, channelKey: ch }
   }
   return undefined
+}
+
+/**
+ * 收集某模型某字段在所有已选渠道中的「可信数值候选」（去重后 >1 个即为冲突）。
+ * 用于向 UI 暴露"这几个渠道对这个模型报价不一致"，而不是静默择一。
+ */
+function collectTrustedNumericCandidates(
+  diff: RatioDifference | undefined,
+  channelNames: string[]
+): Array<{ channelKey: string; value: number }> {
+  if (!diff) return []
+  const seen = new Map<string, number>()
+  for (const ch of channelNames) {
+    if (!isTrusted(diff, ch)) continue
+    const v = diff.upstreams?.[ch]
+    if (typeof v === 'number') seen.set(ch, v)
+    else if (v === 'same' && typeof diff.current === 'number') {
+      seen.set(ch, diff.current)
+    }
+  }
+  return [...seen.entries()].map(([channelKey, value]) => ({ channelKey, value }))
 }
 
 const REL_RATIO_FIELDS: Array<[RatioType, keyof MarkupRow]> = [
@@ -109,6 +176,10 @@ const REL_RATIO_FIELDS: Array<[RatioType, keyof MarkupRow]> = [
  * 比值不变，故原样复制、不需要再乘换算系数。
  * 阶梯/表达式计费：按「换算系数 ×(1+加价%)」整体缩放表达式里的每个价格系数
  * （阶梯阈值/标签不变），极少数无法识别系数的写法才跳过。
+ *
+ * 多渠道同时报价同一模型时：默认按 channelNames 顺序取第一个可信值（并在
+ * row.sourceChannel 标明来源），若多个可信渠道报价不一致会在 row.conflict 里
+ * 列出全部候选，供 UI 提示 + 让管理员用 channelOverride 强制指定某模型用哪个渠道。
  */
 export function buildMarkupPlan(
   differences: DifferencesMap,
@@ -116,7 +187,8 @@ export function buildMarkupPlan(
   vendorIndex: VendorIndex,
   globalPct: number,
   perVendorPct: Record<string, number>,
-  channelFactors: Record<string, number> = {}
+  channelFactors: Record<string, number> = {},
+  channelOverride: Record<string, string> = {}
 ): MarkupPlan {
   const rows: MarkupRow[] = []
   const skippedTiered: string[] = []
@@ -126,14 +198,18 @@ export function buildMarkupPlan(
     const diff = differences[model]
     const vendor = resolveVendor(model, vendorIndex)
     const pct = perVendorPct[vendor] ?? globalPct
+    const override = channelOverride[model]
 
     const billingModeEff = effectiveUpstreamString(diff.billing_mode, channelNames)
-    const billingExprEff = effectiveUpstreamString(diff.billing_expr, channelNames)
+    const billingExprUnforced = effectiveUpstreamString(diff.billing_expr, channelNames)
     const isTiered =
       billingModeEff?.value === 'tiered_expr' ||
-      Boolean(billingExprEff?.value.trim())
+      Boolean(billingExprUnforced?.value.trim())
 
     if (isTiered) {
+      const billingExprEff = override
+        ? effectiveUpstreamString(diff.billing_expr, channelNames, override)
+        : billingExprUnforced
       if (billingExprEff && billingExprEff.value.trim()) {
         const channelFactor = factorOf(billingExprEff.channelKey)
         const { scaled, count } = scaleBillingExpr(
@@ -142,6 +218,8 @@ export function buildMarkupPlan(
           channelFactor
         )
         if (count > 0) {
+          // 表达式无单一数值可比较冲突（多渠道阶梯结构本身就不同），故不做冲突检测，
+          // 仅标明来源渠道供核对；如需换源可用换算系数/手动改表达式弥补。
           rows.push({
             model,
             vendor,
@@ -151,6 +229,7 @@ export function buildMarkupPlan(
             result: 0,
             exprBefore: billingExprEff.value,
             exprAfter: scaled,
+            sourceChannel: billingExprEff.channelKey,
           })
           continue
         }
@@ -160,23 +239,38 @@ export function buildMarkupPlan(
       continue
     }
 
-    const priceBaseEff = effectiveUpstreamNumber(diff.model_price, channelNames)
-    const ratioBaseEff = effectiveUpstreamNumber(diff.model_ratio, channelNames)
+    const priceBaseEff = effectiveUpstreamNumber(diff.model_price, channelNames, override)
+    const ratioBaseEff = effectiveUpstreamNumber(diff.model_ratio, channelNames, override)
 
     let billing: 'ratio' | 'price'
     let base: number
+    let sourceChannel: string
+    let conflict: Array<{ channelKey: string; value: number }> | undefined
     if (priceBaseEff !== undefined) {
       billing = 'price'
       base = priceBaseEff.value * factorOf(priceBaseEff.channelKey)
+      sourceChannel = priceBaseEff.channelKey
+      conflict = detectConflict(diff.model_price, channelNames)
     } else if (ratioBaseEff !== undefined) {
       billing = 'ratio'
       base = ratioBaseEff.value * factorOf(ratioBaseEff.channelKey)
+      sourceChannel = ratioBaseEff.channelKey
+      conflict = detectConflict(diff.model_ratio, channelNames)
     } else {
-      continue // 该渠道没有此模型的可用基准价
+      continue // 该渠道没有此模型的可用基准价（或指定的来源渠道对该模型无可信数据）
     }
 
     const result = round6(base * (1 + pct / 100))
-    const row: MarkupRow = { model, vendor, billing, base, pct, result }
+    const row: MarkupRow = {
+      model,
+      vendor,
+      billing,
+      base,
+      pct,
+      result,
+      sourceChannel,
+      conflict,
+    }
 
     if (billing === 'ratio') {
       for (const [rt, field] of REL_RATIO_FIELDS) {
@@ -193,6 +287,17 @@ export function buildMarkupPlan(
 
   rows.sort((a, b) => a.vendor.localeCompare(b.vendor) || a.model.localeCompare(b.model))
   return { rows, skippedTiered }
+}
+
+/** 若某字段在多个可信渠道间取值不一致，返回全部候选（供 UI 展示 + 手动切换来源） */
+function detectConflict(
+  diff: RatioDifference | undefined,
+  channelNames: string[]
+): Array<{ channelKey: string; value: number }> | undefined {
+  const candidates = collectTrustedNumericCandidates(diff, channelNames)
+  if (candidates.length < 2) return undefined
+  const distinct = new Set(candidates.map((c) => c.value))
+  return distinct.size > 1 ? candidates : undefined
 }
 
 /**

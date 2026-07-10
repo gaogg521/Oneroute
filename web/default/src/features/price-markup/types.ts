@@ -51,6 +51,10 @@ export type MarkupRow = {
   // expr 计费：原始表达式与按比例缩放系数后的表达式（仅数字系数变化，阶梯阈值/标签不变）
   exprBefore?: string
   exprAfter?: string
+  /** 该行基准价实际取自哪个渠道键（如「得物国内模型渠道(1)」），供核对/多渠道场景排查 */
+  sourceChannel: string
+  /** 多个可信渠道对同一模型报价不一致时，列出全部候选（不可信的占位值已提前排除） */
+  conflict?: Array<{ channelKey: string; value: number }>
 }
 
 export type MarkupPlan = {
