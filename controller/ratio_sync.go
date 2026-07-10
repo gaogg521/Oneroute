@@ -86,9 +86,10 @@ var numericPricingSyncFields = map[string]bool{
 }
 
 type upstreamResult struct {
-	Name string         `json:"name"`
-	Data map[string]any `json:"data,omitempty"`
-	Err  string         `json:"err,omitempty"`
+	Name       string             `json:"name"`
+	Data       map[string]any     `json:"data,omitempty"`
+	Err        string             `json:"err,omitempty"`
+	GroupRatio map[string]float64 `json:"group_ratio,omitempty"`
 }
 
 func valueMap(value any) map[string]any {
@@ -342,9 +343,10 @@ func FetchUpstreamRatios(c *gin.Context) {
 			//  type1: /api/ratio_config -> data 为 map[string]any，包含 model_ratio/completion_ratio/cache_ratio/model_price
 			//  type2: /api/pricing      -> data 为 []Pricing 列表，需要转换为与 type1 相同的 map 格式
 			var body struct {
-				Success bool            `json:"success"`
-				Data    json.RawMessage `json:"data"`
-				Message string          `json:"message"`
+				Success    bool               `json:"success"`
+				Data       json.RawMessage    `json:"data"`
+				Message    string             `json:"message"`
+				GroupRatio map[string]float64 `json:"group_ratio"`
 			}
 
 			if err := common.DecodeJson(bytes.NewReader(bodyBytes), &body); err != nil {
@@ -372,7 +374,7 @@ func FetchUpstreamRatios(c *gin.Context) {
 					}
 				}
 				if isType1 {
-					ch <- upstreamResult{Name: uniqueName, Data: type1Data}
+					ch <- upstreamResult{Name: uniqueName, Data: type1Data, GroupRatio: body.GroupRatio}
 					return
 				}
 			}
@@ -488,7 +490,7 @@ func FetchUpstreamRatios(c *gin.Context) {
 				converted[billing_setting.BillingExprField] = valueMap(billingExprMap)
 			}
 
-			ch <- upstreamResult{Name: uniqueName, Data: converted}
+			ch <- upstreamResult{Name: uniqueName, Data: converted, GroupRatio: body.GroupRatio}
 		}(chn)
 	}
 
@@ -512,8 +514,9 @@ func FetchUpstreamRatios(c *gin.Context) {
 			})
 		} else {
 			testResults = append(testResults, dto.TestResult{
-				Name:   r.Name,
-				Status: "success",
+				Name:       r.Name,
+				Status:     "success",
+				GroupRatio: r.GroupRatio,
 			})
 			successfulChannels = append(successfulChannels, struct {
 				name string

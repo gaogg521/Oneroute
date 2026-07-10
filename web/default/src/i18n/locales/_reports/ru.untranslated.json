@@ -116,5 +116,7 @@
   "Channel correction factor": "Channel correction factor",
   "Upstream sync only reads the raw model_ratio — it has no idea which group/discount tier your account falls under on their side. If you know your real rate (e.g. their default group is 0.7x), enter it here: true cost = synced ratio × factor. Leave at 1 if the synced value already is your real cost.": "Upstream sync only reads the raw model_ratio — it has no idea which group/discount tier your account falls under on their side. If you know your real rate (e.g. their default group is 0.7x), enter it here: true cost = synced ratio × factor. Leave at 1 if the synced value already is your real cost.",
   "Source channel:": "Source channel:",
-  "Source:": "Source:"
+  "Source:": "Source:",
+  "Auto-detected": "Auto-detected",
+  "Auto-detected when the upstream's /api/pricing response includes a group_ratio (that request is already authenticated with this channel's own API key, so it reflects which group YOUR key falls under). Edit if wrong, or fill manually when it can't be detected.": "Auto-detected when the upstream's /api/pricing response includes a group_ratio (that request is already authenticated with this channel's own API key, so it reflects which group YOUR key falls under). Edit if wrong, or fill manually when it can't be detected."
 }

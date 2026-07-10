@@ -499,6 +499,9 @@ export type TestResult = {
   name: string
   status: 'success' | 'error'
   error?: string
+  /** 上游 /api/pricing 响应里随附的分组倍率（如 {"default":0.7}）。该次抓取已用
+   * 本渠道自身 API Key 认证，故这反映的是我方这个渠道在上游落在哪个分组。 */
+  group_ratio?: Record<string, number>
 }
 
 export type UpstreamRatiosResponse = {

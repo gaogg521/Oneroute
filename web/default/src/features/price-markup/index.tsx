@@ -94,6 +94,10 @@ export function PriceMarkup() {
   const [channelFactorInput, setChannelFactorInput] = useState<
     Record<number, string>
   >({})
+  // 记录哪些渠道的系数是从上游 group_ratio 自动读取的（用于 UI 提示"自动检测"）
+  const [autoDetectedFactor, setAutoDetectedFactor] = useState<
+    Record<number, number>
+  >({})
   // 多渠道同一模型报价冲突时，管理员手动指定用哪个渠道的价格作为基准（model -> channelKey）
   const [channelOverride, setChannelOverride] = useState<
     Record<string, string>
@@ -152,6 +156,33 @@ export function PriceMarkup() {
         variables.upstreams.map((u) => ({ id: u.id, name: u.name }))
       )
       setChannelOverride({})
+      // 该次抓取已用渠道自身 API Key 认证上游 /api/pricing，上游随附返回的
+      // group_ratio 就是"我方这个渠道在上游落在哪个分组"，自动预填换算系数
+      // （只填未手动改过的渠道，不覆盖用户已输入的值）。
+      const detected: Record<number, number> = {}
+      for (const u of variables.upstreams) {
+        const gr = data.data.test_results.find(
+          (r) => r.name === `${u.name}(${u.id})`
+        )?.group_ratio
+        if (!gr) continue
+        const keys = Object.keys(gr)
+        const suggested =
+          gr.default !== undefined
+            ? gr.default
+            : keys.length === 1
+              ? gr[keys[0]]
+              : undefined
+        if (suggested !== undefined) detected[u.id] = suggested
+      }
+      setAutoDetectedFactor(detected)
+      setChannelFactorInput((prev) => {
+        const next = { ...prev }
+        for (const [idStr, value] of Object.entries(detected)) {
+          const id = Number(idStr)
+          if (next[id] === undefined) next[id] = String(value)
+        }
+        return next
+      })
       const errs = data.data.test_results.filter((r) => r.status === 'error')
       if (errs.length > 0) {
         toast.warning(
@@ -351,30 +382,40 @@ export function PriceMarkup() {
               </div>
               <p className='text-muted-foreground text-xs'>
                 {t(
-                  'Upstream sync only reads the raw model_ratio — it has no idea which group/discount tier your account falls under on their side. If you know your real rate (e.g. their default group is 0.7x), enter it here: true cost = synced ratio × factor. Leave at 1 if the synced value already is your real cost.'
+                  "Auto-detected when the upstream's /api/pricing response includes a group_ratio (that request is already authenticated with this channel's own API key, so it reflects which group YOUR key falls under). Edit if wrong, or fill manually when it can't be detected."
                 )}
               </p>
               <div className='flex flex-wrap gap-3'>
-                {selectedChannels.map((ch) => (
-                  <div key={ch.id} className='flex items-center gap-2'>
-                    <span className='text-muted-foreground text-xs'>
-                      {ch.name}
-                    </span>
-                    <Input
-                      type='number'
-                      placeholder='1'
-                      value={channelFactorInput[ch.id] ?? ''}
-                      onChange={(e) =>
-                        setChannelFactorInput((prev) => ({
-                          ...prev,
-                          [ch.id]: e.target.value,
-                        }))
-                      }
-                      disabled={busy}
-                      className='h-8 w-24'
-                    />
-                  </div>
-                ))}
+                {selectedChannels.map((ch) => {
+                  const isAutoValue =
+                    autoDetectedFactor[ch.id] !== undefined &&
+                    channelFactorInput[ch.id] === String(autoDetectedFactor[ch.id])
+                  return (
+                    <div key={ch.id} className='flex items-center gap-2'>
+                      <span className='text-muted-foreground text-xs'>
+                        {ch.name}
+                      </span>
+                      <Input
+                        type='number'
+                        placeholder='1'
+                        value={channelFactorInput[ch.id] ?? ''}
+                        onChange={(e) =>
+                          setChannelFactorInput((prev) => ({
+                            ...prev,
+                            [ch.id]: e.target.value,
+                          }))
+                        }
+                        disabled={busy}
+                        className='h-8 w-24'
+                      />
+                      {isAutoValue ? (
+                        <Badge variant='secondary' className='shrink-0'>
+                          {t('Auto-detected')}
+                        </Badge>
+                      ) : null}
+                    </div>
+                  )
+                })}
               </div>
             </div>
           ) : null}

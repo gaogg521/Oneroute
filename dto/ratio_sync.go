@@ -18,6 +18,11 @@ type TestResult struct {
 	Name   string `json:"name"`
 	Status string `json:"status"`
 	Error  string `json:"error,omitempty"`
+	// GroupRatio 上游 /api/pricing 响应里随附的分组倍率（如 {"default":0.7}）。
+	// 该请求已用本渠道自身的 API Key 认证，故这里反映的是"我方这个渠道在上游
+	// 落在哪个分组、上游对该分组打了多少折"，可用于修正批量加价的成本基准。
+	// 仅 /api/pricing（type2）格式的上游会有此字段，其余格式为空。
+	GroupRatio map[string]float64 `json:"group_ratio,omitempty"`
 }
 
 // DifferenceItem 差异项

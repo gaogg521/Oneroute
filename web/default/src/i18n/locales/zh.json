@@ -5500,7 +5500,9 @@
     "Upstream sync only reads the raw model_ratio — it has no idea which group/discount tier your account falls under on their side. If you know your real rate (e.g. their default group is 0.7x), enter it here: true cost = synced ratio × factor. Leave at 1 if the synced value already is your real cost.": "上游同步只读取裸的 model_ratio——它不知道你的账号在对方那边属于哪个分组/折扣档。如果你知道自己的真实费率（例如对方 default 分组是 0.7x），在这里填入：真实成本 = 同步倍率 × 系数。如果同步值本身就是你的真实成本，保持 1 即可。",
     "{{count}} channels disagree": "{{count}} 个渠道报价不一致",
     "Source channel:": "来源渠道:",
-    "Source:": "来源:"
+    "Source:": "来源:",
+    "Auto-detected": "已自动检测",
+    "Auto-detected when the upstream's /api/pricing response includes a group_ratio (that request is already authenticated with this channel's own API key, so it reflects which group YOUR key falls under). Edit if wrong, or fill manually when it can't be detected.": "当上游 /api/pricing 响应里带有 group_ratio 时会自动检测（该请求已用本渠道自身 API Key 认证，所以反映的正是你这个渠道在上游落在哪个分组）。检测错了可以改，检测不到时手动填。"
   },
   "Confirm Kick": "确认踢出",
   "Are you sure you want to remove": "确定要将",
