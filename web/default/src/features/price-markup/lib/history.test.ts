@@ -5,12 +5,14 @@ import type { MarkupPlan, OptionMaps } from '../types'
 import {
   buildHistoryEntries,
   buildResetOptionUpdates,
+  buildResetOptionUpdatesForModels,
   mergeMarkupHistory,
   type MarkupHistory,
   type MarkupHistoryEntry,
   parseMarkupHistory,
   recomputeEntryForPct,
   recomputePctForPrice,
+  removeMarkupHistoryEntries,
   removeMarkupHistoryEntry,
 } from './history'
 
@@ -338,6 +340,121 @@ describe('buildResetOptionUpdates', () => {
     const updates = buildResetOptionUpdates('qwen-turbo', entry, current)
     const map = new Map(updates.map((u) => [u.key, JSON.parse(u.value)]))
     assert.equal('qwen-turbo' in map.get('ModelRatio'), false)
+  })
+})
+
+describe('buildResetOptionUpdatesForModels', () => {
+  test('resets multiple models from potentially different vendors in one merged pass', () => {
+    const history: MarkupHistory = {
+      'gpt-4o': {
+        vendor: 'OpenAI',
+        billing: 'ratio',
+        upstreamPrice: 2.5,
+        pct: 20,
+        appliedResult: 3,
+        sourceChannel: 'a(1)',
+        channelFactor: 1,
+        appliedAt: 1,
+        before: { billingMode: '', billingExpr: '', modelRatio: 1 },
+      },
+      'gpt-4o-mini': {
+        vendor: 'OpenAI',
+        billing: 'ratio',
+        upstreamPrice: 0.5,
+        pct: 20,
+        appliedResult: 0.6,
+        sourceChannel: 'a(1)',
+        channelFactor: 1,
+        appliedAt: 1,
+        before: NO_BEFORE, // never had a custom price before
+      },
+      'claude-3': {
+        vendor: 'Anthropic',
+        billing: 'ratio',
+        upstreamPrice: 1,
+        pct: 10,
+        appliedResult: 1.1,
+        sourceChannel: 'b(2)',
+        channelFactor: 1,
+        appliedAt: 1,
+        before: { billingMode: '', billingExpr: '', modelRatio: 0.9 },
+      },
+    }
+    const current: OptionMaps = {
+      ...EMPTY_MAPS,
+      ModelRatio: { 'gpt-4o': 3, 'gpt-4o-mini': 0.6, 'claude-3': 1.1, other: 9 },
+    }
+    // only reset the two OpenAI models; claude-3 (a different vendor) must stay untouched
+    const updates = buildResetOptionUpdatesForModels(
+      ['gpt-4o', 'gpt-4o-mini'],
+      history,
+      current
+    )
+    const map = new Map(updates.map((u) => [u.key, JSON.parse(u.value)]))
+    assert.equal(map.get('ModelRatio')['gpt-4o'], 1)
+    assert.equal('gpt-4o-mini' in map.get('ModelRatio'), false)
+    assert.equal(map.get('ModelRatio')['claude-3'], 1.1) // untouched, not in the reset list
+    assert.equal(map.get('ModelRatio')['other'], 9) // unrelated model untouched
+  })
+
+  test('a model name missing from history is skipped rather than throwing', () => {
+    const current: OptionMaps = { ...EMPTY_MAPS, ModelRatio: { 'gpt-4o': 3 } }
+    assert.doesNotThrow(() =>
+      buildResetOptionUpdatesForModels(['nonexistent-model'], {}, current)
+    )
+    const updates = buildResetOptionUpdatesForModels(
+      ['nonexistent-model'],
+      {},
+      current
+    )
+    const map = new Map(updates.map((u) => [u.key, JSON.parse(u.value)]))
+    assert.equal(map.get('ModelRatio')['gpt-4o'], 3) // untouched
+  })
+})
+
+describe('removeMarkupHistoryEntries', () => {
+  test('deletes all named models, leaving the rest untouched', () => {
+    const current: MarkupHistory = {
+      'gpt-4o': {
+        vendor: 'OpenAI',
+        billing: 'ratio',
+        upstreamPrice: 2.5,
+        pct: 20,
+        appliedResult: 3,
+        sourceChannel: 'a(1)',
+        channelFactor: 1,
+        appliedAt: 1,
+        before: NO_BEFORE,
+      },
+      'gpt-4o-mini': {
+        vendor: 'OpenAI',
+        billing: 'ratio',
+        upstreamPrice: 0.5,
+        pct: 20,
+        appliedResult: 0.6,
+        sourceChannel: 'a(1)',
+        channelFactor: 1,
+        appliedAt: 1,
+        before: NO_BEFORE,
+      },
+      'claude-3': {
+        vendor: 'Anthropic',
+        billing: 'ratio',
+        upstreamPrice: 1,
+        pct: 10,
+        appliedResult: 1.1,
+        sourceChannel: 'b(2)',
+        channelFactor: 1,
+        appliedAt: 1,
+        before: NO_BEFORE,
+      },
+    }
+    const result = JSON.parse(
+      removeMarkupHistoryEntries(current, ['gpt-4o', 'gpt-4o-mini'])
+    )
+    assert.equal('gpt-4o' in result, false)
+    assert.equal('gpt-4o-mini' in result, false)
+    assert.equal('claude-3' in result, true)
   })
 })
 

@@ -162,6 +162,16 @@ export function removeMarkupHistoryEntry(
   return JSON.stringify(next, null, 2)
 }
 
+/** 批量版 removeMarkupHistoryEntry：一次性移除多个模型（供「按供应商一键重置」使用） */
+export function removeMarkupHistoryEntries(
+  current: MarkupHistory,
+  models: string[]
+): string {
+  const next = { ...current }
+  for (const model of models) delete next[model]
+  return JSON.stringify(next, null, 2)
+}
+
 /**
  * 管理员在「已应用的加价记录」里单独把某个模型的加价%改成 newPct 时，
  * 基于记录里保存的基准价/原始表达式重新算出新结果，不需要重新走整个抓取流程。
@@ -198,23 +208,8 @@ export function recomputePctForPrice(
   return round6((newPrice / entry.upstreamPrice - 1) * 100)
 }
 
-/**
- * 「重置」：把某个模型的系统实际计费状态改回 entry.before 记录的、本工具第一次
- * 同步它之前的原始快照（倍率/价格/阶梯表达式 + 全部相关子倍率），返回待写回的
- * 10 个 option 更新项。写回后应配合 removeMarkupHistoryEntry 把该模型移出历史记录。
- * entry.before 在这个字段上线之前应用的旧记录里不存在，兜底当作"从未自定义过"处理
- * （重置会把该模型的计费配置整体清空，而不是抛错）。
- */
-export function buildResetOptionUpdates(
-  model: string,
-  entry: MarkupHistoryEntry,
-  current: OptionMaps
-): OptionUpdate[] {
-  const before: MarkupBeforeSnapshot = entry.before ?? {
-    billingMode: '',
-    billingExpr: '',
-  }
-  const next: OptionMaps = {
+function cloneOptionMaps(current: OptionMaps): OptionMaps {
+  return {
     ModelRatio: { ...current.ModelRatio },
     ModelPrice: { ...current.ModelPrice },
     CompletionRatio: { ...current.CompletionRatio },
@@ -225,6 +220,18 @@ export function buildResetOptionUpdates(
     AudioCompletionRatio: { ...current.AudioCompletionRatio },
     BillingMode: { ...current.BillingMode },
     BillingExpr: { ...current.BillingExpr },
+  }
+}
+
+/** 就地把单个模型的计费状态改回 entry.before 记录的原始快照（供单个/批量重置共用） */
+function applyResetForModel(
+  next: OptionMaps,
+  model: string,
+  entry: MarkupHistoryEntry
+): void {
+  const before: MarkupBeforeSnapshot = entry.before ?? {
+    billingMode: '',
+    billingExpr: '',
   }
 
   delete next.ModelRatio[model]
@@ -257,7 +264,9 @@ export function buildResetOptionUpdates(
       next.AudioCompletionRatio[model] = before.audioCompletionRatio
     }
   }
+}
 
+function optionMapsToUpdates(next: OptionMaps): OptionUpdate[] {
   return [
     { key: 'ModelRatio', value: JSON.stringify(next.ModelRatio, null, 2) },
     { key: 'ModelPrice', value: JSON.stringify(next.ModelPrice, null, 2) },
@@ -285,4 +294,39 @@ export function buildResetOptionUpdates(
       value: JSON.stringify(next.BillingExpr, null, 2),
     },
   ]
+}
+
+/**
+ * 「重置」：把某个模型的系统实际计费状态改回 entry.before 记录的、本工具第一次
+ * 同步它之前的原始快照（倍率/价格/阶梯表达式 + 全部相关子倍率），返回待写回的
+ * 10 个 option 更新项。写回后应配合 removeMarkupHistoryEntry 把该模型移出历史记录。
+ * entry.before 在这个字段上线之前应用的旧记录里不存在，兜底当作"从未自定义过"处理
+ * （重置会把该模型的计费配置整体清空，而不是抛错）。
+ */
+export function buildResetOptionUpdates(
+  model: string,
+  entry: MarkupHistoryEntry,
+  current: OptionMaps
+): OptionUpdate[] {
+  const next = cloneOptionMaps(current)
+  applyResetForModel(next, model, entry)
+  return optionMapsToUpdates(next)
+}
+
+/**
+ * 批量重置：对多个模型依次应用「重置」逻辑，合并成同一批 10 个 option 更新项一次性写回
+ * （供「按供应商一键重置」使用）。history 里找不到对应条目的模型名会被跳过。
+ */
+export function buildResetOptionUpdatesForModels(
+  models: string[],
+  history: MarkupHistory,
+  current: OptionMaps
+): OptionUpdate[] {
+  const next = cloneOptionMaps(current)
+  for (const model of models) {
+    const entry = history[model]
+    if (!entry) continue
+    applyResetForModel(next, model, entry)
+  }
+  return optionMapsToUpdates(next)
 }

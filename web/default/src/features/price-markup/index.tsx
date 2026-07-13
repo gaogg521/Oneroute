@@ -80,6 +80,7 @@ import {
 import {
   buildHistoryEntries,
   buildResetOptionUpdates,
+  buildResetOptionUpdatesForModels,
   MARKUP_HISTORY_OPTION_KEY,
   mergeMarkupHistory,
   type MarkupHistoryEntry,
@@ -87,6 +88,7 @@ import {
   recomputeEntryForPct,
   recomputePctForPrice,
   removeMarkupHistoryEntry,
+  removeMarkupHistoryEntries,
 } from './lib/history'
 import {
   buildMarkupPlan,
@@ -151,6 +153,8 @@ export function PriceMarkup() {
   const [editDraft, setEditDraft] = useState('')
   // 待确认重置的模型（null=无待确认）；确认后把系统价格改回本工具第一次同步它之前的样子
   const [resetModel, setResetModel] = useState<string | null>(null)
+  // 待确认批量重置的供应商（null=无待确认）；确认后把该供应商下全部模型逐一改回原样
+  const [resetVendor, setResetVendor] = useState<string | null>(null)
 
   const { data: channelsData } = useQuery({
     queryKey: priceMarkupQueryKeys.channels(),
@@ -488,6 +492,41 @@ export function PriceMarkup() {
     onError: (e: Error) => toast.error(e.message || t('Failed to reset price')),
   })
 
+  // 按供应商批量重置：对该供应商下全部已记录模型逐一改回原样，合并成一批 option 写回
+  const resetVendorMutation = useMutation({
+    mutationFn: async (vendor: string) => {
+      const opts = await getSystemOptions()
+      const current = parseOptionMaps(opts.data ?? [])
+      const currentHistory = parseMarkupHistory(opts.data ?? [])
+      const models = Object.entries(currentHistory)
+        .filter(([, entry]) => entry.vendor === vendor)
+        .map(([model]) => model)
+      if (models.length === 0) {
+        throw new Error(t("Could not recompute this model's price"))
+      }
+
+      const updates = buildResetOptionUpdatesForModels(
+        models,
+        currentHistory,
+        current
+      )
+      for (const u of updates) await updateSystemOption(u)
+      await updateSystemOption({
+        key: MARKUP_HISTORY_OPTION_KEY,
+        value: removeMarkupHistoryEntries(currentHistory, models),
+      })
+      return models.length
+    },
+    onSuccess: (count: number) => {
+      toast.success(t('{{count}} models reset', { count }))
+      setResetVendor(null)
+      void queryClient.invalidateQueries({
+        queryKey: priceMarkupQueryKeys.history(),
+      })
+    },
+    onError: (e: Error) => toast.error(e.message || t('Failed to reset price')),
+  })
+
   const applyMutation = useMutation({
     mutationFn: async () => {
       const opts = await getSystemOptions()
@@ -616,16 +655,29 @@ export function PriceMarkup() {
               historyBuckets.map((b) => (
                 <Card key={b.vendor || '__other__'}>
                   <CardHeader className='gap-3'>
-                    <div className='flex items-center gap-2 text-sm font-medium'>
-                      {b.vendor ? (
-                        <span className='flex size-4 shrink-0 items-center justify-center'>
-                          {getLobeIcon(vendorIndex.vendorIcon.get(b.vendor), 16)}
-                        </span>
-                      ) : null}
-                      {b.vendor || t('Other')}
-                      <Badge variant='secondary'>
-                        {t('{{count}} models', { count: b.entries.length })}
-                      </Badge>
+                    <div className='flex items-center justify-between gap-2'>
+                      <div className='flex items-center gap-2 text-sm font-medium'>
+                        {b.vendor ? (
+                          <span className='flex size-4 shrink-0 items-center justify-center'>
+                            {getLobeIcon(vendorIndex.vendorIcon.get(b.vendor), 16)}
+                          </span>
+                        ) : null}
+                        {b.vendor || t('Other')}
+                        <Badge variant='secondary'>
+                          {t('{{count}} models', { count: b.entries.length })}
+                        </Badge>
+                      </div>
+                      <Button
+                        size='xs'
+                        variant='outline'
+                        disabled={
+                          resetVendorMutation.isPending || resetMutation.isPending
+                        }
+                        onClick={() => setResetVendor(b.vendor)}
+                      >
+                        <RotateCcw className='size-3 opacity-60' />
+                        {t('Reset all in this vendor')}
+                      </Button>
                     </div>
                   </CardHeader>
                   <CardContent className='flex flex-col gap-1'>
@@ -1138,6 +1190,43 @@ export function PriceMarkup() {
                 onClick={() => resetModel && resetMutation.mutate(resetModel)}
               >
                 {resetMutation.isPending ? t('Resetting...') : t('Reset')}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog
+          open={resetVendor !== null}
+          onOpenChange={(open) => !open && setResetVendor(null)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t('Are you sure?')}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {t(
+                  'Reset all {{count}} models from {{vendor}} back to what they were before this tool first synced them? They will be removed from the applied markup record.',
+                  {
+                    count:
+                      historyBuckets.find((b) => b.vendor === resetVendor)
+                        ?.entries.length ?? 0,
+                    vendor: resetVendor || t('Other'),
+                  }
+                )}{' '}
+                {t('This action cannot be undone.')}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={resetVendorMutation.isPending}>
+                {t('Cancel')}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                variant='destructive'
+                disabled={resetVendorMutation.isPending}
+                onClick={() =>
+                  resetVendor !== null && resetVendorMutation.mutate(resetVendor)
+                }
+              >
+                {resetVendorMutation.isPending ? t('Resetting...') : t('Reset all')}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
