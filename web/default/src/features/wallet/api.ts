@@ -95,6 +95,30 @@ export async function calculateStripeAmount(
 }
 
 /**
+ * Calculate payment amount for Antom (Alipay overseas) payment
+ */
+export async function calculateAntomAmount(
+  request: AmountRequest
+): Promise<AmountResponse> {
+  const res = await api.post('/api/user/antom/amount', request, {
+    skipBusinessError: true,
+  } as Record<string, unknown>)
+  return res.data
+}
+
+/**
+ * Calculate payment amount for OneOne (Oneverse) payment
+ */
+export async function calculateOneOneAmount(
+  request: AmountRequest
+): Promise<AmountResponse> {
+  const res = await api.post('/api/user/oneone/amount', request, {
+    skipBusinessError: true,
+  } as Record<string, unknown>)
+  return res.data
+}
+
+/**
  * Request regular payment
  */
 export async function requestPayment(

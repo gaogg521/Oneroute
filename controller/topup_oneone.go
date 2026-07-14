@@ -263,6 +263,35 @@ func getOneOnePayMoney(amount float64, group string) float64 {
 	return amount * setting.OneOneUnitPrice * topupGroupRatio * discount
 }
 
+// RequestOneOneAmount previews the real-currency amount for a given topup
+// amount without creating an order, mirroring RequestWaffoAmount.
+func RequestOneOneAmount(c *gin.Context) {
+	var req OneOnePayRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "参数错误"})
+		return
+	}
+	if req.Amount < getOneOneMinTopup() {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", getOneOneMinTopup())})
+		return
+	}
+
+	id := c.GetInt("id")
+	group, err := model.GetUserGroup(id, true)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "获取用户分组失败"})
+		return
+	}
+
+	payMoney := getOneOnePayMoney(float64(req.Amount), group)
+	if payMoney <= 0.01 {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值金额过低"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "success", "data": fmt.Sprintf("%.2f", payMoney)})
+}
+
 // OneOnePayRequest is the client payload for initiating a OneOne topup.
 type OneOnePayRequest struct {
 	Amount        int64  `json:"amount"`

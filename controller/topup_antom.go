@@ -84,6 +84,35 @@ func getAntomPayMoney(amount float64, group string) float64 {
 	return amount * setting.AntomUnitPrice * topupGroupRatio * discount
 }
 
+// RequestAntomAmount previews the real-currency amount for a given topup
+// amount without creating an order, mirroring RequestWaffoAmount.
+func RequestAntomAmount(c *gin.Context) {
+	var req AntomPayRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "参数错误"})
+		return
+	}
+	if req.Amount < getAntomMinTopup() {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", getAntomMinTopup())})
+		return
+	}
+
+	id := c.GetInt("id")
+	group, err := model.GetUserGroup(id, true)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "获取用户分组失败"})
+		return
+	}
+
+	payMoney := getAntomPayMoney(float64(req.Amount), group)
+	if payMoney <= 0.01 {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值金额过低"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "success", "data": fmt.Sprintf("%.2f", payMoney)})
+}
+
 // RequestAntomPay creates a pending topup order and a hosted Antom cashier
 // session, returning the redirect URL as `pay_link` (mirrors the Stripe flow).
 func RequestAntomPay(c *gin.Context) {
