@@ -161,6 +161,10 @@ import {
   hasAdvancedSettingsErrors,
 } from '../../lib'
 import {
+  getEndpointPreview,
+  isPassthroughChannelType,
+} from '../../lib/endpoint-preview'
+import {
   collectInvalidStatusCodeEntries,
   collectNewDisallowedStatusCodeRedirects,
 } from '../../lib/status-code-risk-guard'
@@ -577,25 +581,6 @@ function ChannelEditorNav(props: {
       </div>
     </aside>
   )
-}
-
-const VOLC_ENGINE_ENDPOINT_SUFFIXES: Array<{ label: string; path: string }> = [
-  { label: 'Chat Completions', path: '/api/v3/chat/completions' },
-  { label: 'Images', path: '/api/v3/images/generations' },
-  { label: 'Embeddings', path: '/api/v3/embeddings' },
-  { label: 'Responses', path: '/api/v3/responses' },
-  { label: 'Rerank', path: '/api/v3/rerank' },
-]
-
-function getVolcEngineEndpointPreview(baseUrl: string | undefined) {
-  const trimmed = (baseUrl || 'https://ark.cn-beijing.volces.com').replace(
-    /\/+$/,
-    ''
-  )
-  return VOLC_ENGINE_ENDPOINT_SUFFIXES.map(({ label, path }) => ({
-    label,
-    url: `${trimmed}${path}`,
-  }))
 }
 
 export function ChannelMutateDrawer({
@@ -2581,8 +2566,15 @@ export function ChannelMutateDrawer({
                                       {t('Select the API endpoint region')}
                                       <br />
                                       <span className='mt-1 block space-y-0.5 font-mono text-[11px] break-all'>
-                                        {getVolcEngineEndpointPreview(
-                                          field.value
+                                        {(
+                                          getEndpointPreview(
+                                            45,
+                                            field.value ===
+                                              'doubao-coding-plan'
+                                              ? 'https://ark.cn-beijing.volces.com'
+                                              : field.value ||
+                                                  'https://ark.cn-beijing.volces.com'
+                                          ) || []
                                         ).map(({ label, url }) => (
                                           <span key={label} className='block'>
                                             {t(label)}: {url}
@@ -2616,8 +2608,12 @@ export function ChannelMutateDrawer({
                                       {t('Enter custom API endpoint URL')}
                                       <br />
                                       <span className='mt-1 block space-y-0.5 font-mono text-[11px] break-all'>
-                                        {getVolcEngineEndpointPreview(
-                                          field.value
+                                        {(
+                                          getEndpointPreview(
+                                            45,
+                                            field.value ||
+                                              'https://ark.cn-beijing.volces.com'
+                                          ) || []
                                         ).map(({ label, url }) => (
                                           <span key={label} className='block'>
                                             {t(label)}: {url}
@@ -2674,6 +2670,39 @@ export function ChannelMutateDrawer({
                                       {t(
                                         'Custom API base URL. For official channels, New API has built-in addresses. Only fill this for third-party proxy sites or special endpoints. Do not add /v1 or trailing slash.'
                                       )}
+                                      {(() => {
+                                        const preview = getEndpointPreview(
+                                          currentType,
+                                          field.value
+                                        )
+                                        if (!preview) return null
+                                        return (
+                                          <>
+                                            <br />
+                                            <span className='mt-1 block space-y-0.5 font-mono text-[11px] break-all'>
+                                              {preview.map(
+                                                ({ label, url }) => (
+                                                  <span
+                                                    key={label}
+                                                    className='block'
+                                                  >
+                                                    {t(label)}: {url}
+                                                  </span>
+                                                )
+                                              )}
+                                            </span>
+                                            {isPassthroughChannelType(
+                                              currentType
+                                            ) && (
+                                              <span className='mt-1 block'>
+                                                {t(
+                                                  'Standard OpenAI-compatible paths — the actual request path mirrors whatever endpoint the client calls.'
+                                                )}
+                                              </span>
+                                            )}
+                                          </>
+                                        )
+                                      })()}
                                     </FormDescription>
                                     <FormMessage />
                                   </FormItem>

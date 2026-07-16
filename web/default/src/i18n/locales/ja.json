@@ -5525,11 +5525,16 @@
     "No markup has been applied yet. This table fills in and persists after you click \"Apply markup\" below.": "No markup has been applied yet. This table fills in and persists after you click \"Apply markup\" below.",
     "from": "from",
     "(cleared)": "(cleared)",
-    "Changed since": "Changed since"
+    "Changed since": "Changed since",
+    "Images": "Images",
+    "Responses": "Responses",
+    "Messages": "Messages",
+    "Audio Speech": "Audio Speech",
+    "Image Edits": "Image Edits",
+    "Workflow": "Workflow",
+    "Standard OpenAI-compatible paths — the actual request path mirrors whatever endpoint the client calls.": "Standard OpenAI-compatible paths — the actual request path mirrors whatever endpoint the client calls."
   },
   "Confirm Kick": "确认踢出",
   "Are you sure you want to remove": "确定要将",
-  "from your team?": "移出团队吗？",
-  "Images": "Images",
-  "Responses": "Responses"
+  "from your team?": "移出团队吗？"
 }

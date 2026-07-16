@@ -5525,11 +5525,16 @@
     "No markup has been applied yet. This table fills in and persists after you click \"Apply markup\" below.": "还没有应用过加价。点击下方「应用加价」后，这张表会填入内容并持久保存。",
     "from": "来自",
     "(cleared)": "(已清空)",
-    "Changed since": "已被改动"
+    "Changed since": "已被改动",
+    "Images": "图像",
+    "Responses": "响应",
+    "Messages": "消息",
+    "Audio Speech": "语音合成",
+    "Image Edits": "图像编辑",
+    "Workflow": "工作流",
+    "Standard OpenAI-compatible paths — the actual request path mirrors whatever endpoint the client calls.": "以上为标准 OpenAI 兼容路径，实际请求地址取决于客户端调用的具体接口路径。"
   },
   "Confirm Kick": "确认踢出",
   "Are you sure you want to remove": "确定要将",
-  "from your team?": "移出团队吗？",
-  "Images": "图像",
-  "Responses": "响应"
+  "from your team?": "移出团队吗？"
 }
