@@ -579,6 +579,25 @@ function ChannelEditorNav(props: {
   )
 }
 
+const VOLC_ENGINE_ENDPOINT_SUFFIXES: Array<{ label: string; path: string }> = [
+  { label: 'Chat Completions', path: '/api/v3/chat/completions' },
+  { label: 'Images', path: '/api/v3/images/generations' },
+  { label: 'Embeddings', path: '/api/v3/embeddings' },
+  { label: 'Responses', path: '/api/v3/responses' },
+  { label: 'Rerank', path: '/api/v3/rerank' },
+]
+
+function getVolcEngineEndpointPreview(baseUrl: string | undefined) {
+  const trimmed = (baseUrl || 'https://ark.cn-beijing.volces.com').replace(
+    /\/+$/,
+    ''
+  )
+  return VOLC_ENGINE_ENDPOINT_SUFFIXES.map(({ label, path }) => ({
+    label,
+    url: `${trimmed}${path}`,
+  }))
+}
+
 export function ChannelMutateDrawer({
   open,
   onOpenChange,
@@ -2560,6 +2579,16 @@ export function ChannelMutateDrawer({
                                     </Select>
                                     <FormDescription>
                                       {t('Select the API endpoint region')}
+                                      <br />
+                                      <span className='mt-1 block space-y-0.5 font-mono text-[11px] break-all'>
+                                        {getVolcEngineEndpointPreview(
+                                          field.value
+                                        ).map(({ label, url }) => (
+                                          <span key={label} className='block'>
+                                            {t(label)}: {url}
+                                          </span>
+                                        ))}
+                                      </span>
                                     </FormDescription>
                                     <FormMessage />
                                   </FormItem>
@@ -2585,6 +2614,16 @@ export function ChannelMutateDrawer({
                                     </FormControl>
                                     <FormDescription>
                                       {t('Enter custom API endpoint URL')}
+                                      <br />
+                                      <span className='mt-1 block space-y-0.5 font-mono text-[11px] break-all'>
+                                        {getVolcEngineEndpointPreview(
+                                          field.value
+                                        ).map(({ label, url }) => (
+                                          <span key={label} className='block'>
+                                            {t(label)}: {url}
+                                          </span>
+                                        ))}
+                                      </span>
                                     </FormDescription>
                                     <FormMessage />
                                   </FormItem>

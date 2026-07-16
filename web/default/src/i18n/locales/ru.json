@@ -5491,6 +5491,10 @@
     "Reset {{model}}'s price back to what it was before this tool first synced it? It will be removed from the applied markup record.": "Reset {{model}}'s price back to what it was before this tool first synced it? It will be removed from the applied markup record.",
     "Price reset": "Price reset",
     "Failed to reset price": "Failed to reset price",
+    "Reset all in this vendor": "Reset all in this vendor",
+    "{{count}} models reset": "{{count}} models reset",
+    "Reset all {{count}} models from {{vendor}} back to what they were before this tool first synced them? They will be removed from the applied markup record.": "Reset all {{count}} models from {{vendor}} back to what they were before this tool first synced them? They will be removed from the applied markup record.",
+    "Reset all": "Reset all",
     "Pick source channel(s) to read upstream prices, set a global markup and optional per-vendor overrides, then apply. Sell price = upstream price × (1 + markup%).": "Pick source channel(s) to read upstream prices, set a global markup and optional per-vendor overrides, then apply. Sell price = upstream price × (1 + markup%).",
     "The group ratio multiplies your LOCAL price, not the channel cost. To earn a fixed % on every model, local price must first equal cost — that is exactly what this tool sets.": "The group ratio multiplies your LOCAL price, not the channel cost. To earn a fixed % on every model, local price must first equal cost — that is exactly what this tool sets.",
     "After applying here, keep the group ratio at 1, otherwise the two markups stack (cost × markup × group ratio).": "After applying here, keep the group ratio at 1, otherwise the two markups stack (cost × markup × group ratio).",
@@ -5525,5 +5529,7 @@
   },
   "Confirm Kick": "确认踢出",
   "Are you sure you want to remove": "确定要将",
-  "from your team?": "移出团队吗？"
+  "from your team?": "移出团队吗？",
+  "Images": "Images",
+  "Responses": "Responses"
 }
