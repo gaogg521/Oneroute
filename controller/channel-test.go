@@ -784,6 +784,17 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 		}
 	}
 
+	// VolcEngine 图像生成模型（seedream）——与上方 requestPath 自动检测(/v1/images/generations)保持一致，
+	// 否则自动检测模式下会构造成对话请求，导致 relayMode=ImagesGenerations 时类型断言失败报 "invalid image request type"
+	if channel != nil && channel.Type == constant.ChannelTypeVolcEngine && strings.Contains(model, "seedream") {
+		return &dto.ImageRequest{
+			Model:  model,
+			Prompt: "a cute cat",
+			N:      lo.ToPtr(uint(1)),
+			Size:   "1024x1024",
+		}
+	}
+
 	// Responses compaction models (must use /v1/responses/compact)
 	if strings.HasSuffix(model, ratio_setting.CompactModelSuffix) {
 		return &dto.OpenAIResponsesCompactionRequest{
