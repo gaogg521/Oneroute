@@ -9,6 +9,8 @@ var ModelList = []string{
 	"doubao-seedance-1-5-pro-251215",
 	"doubao-seedance-2-0-260128",
 	"doubao-seedance-2-0-fast-260128",
+	// 3D 生成模型（图生3D），走同一异步任务接口，产物在 content.file_url
+	"doubao-seed3d-2-0-260328",
 }
 
 var ChannelName = "doubao-video"

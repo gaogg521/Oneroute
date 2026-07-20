@@ -13,6 +13,7 @@ func TestParseTaskResult(t *testing.T) {
 		name       string
 		body       string
 		wantStatus model.TaskStatus
+		wantURL    string
 		wantErr    bool
 	}{
 		{
@@ -29,6 +30,13 @@ func TestParseTaskResult(t *testing.T) {
 			name:       "succeeded",
 			body:       `{"id":"t1","status":"succeeded","content":{"video_url":"https://example.com/v.mp4"}}`,
 			wantStatus: model.TaskStatusSuccess,
+			wantURL:    "https://example.com/v.mp4",
+		},
+		{
+			name:       "succeeded 3D uses file_url",
+			body:       `{"id":"t1","status":"succeeded","content":{"file_url":"https://example.com/model.zip"}}`,
+			wantStatus: model.TaskStatusSuccess,
+			wantURL:    "https://example.com/model.zip",
 		},
 		{
 			name:       "failed",
@@ -66,6 +74,9 @@ func TestParseTaskResult(t *testing.T) {
 			}
 			if result.Status != string(tc.wantStatus) {
 				t.Fatalf("status = %q, want %q", result.Status, tc.wantStatus)
+			}
+			if tc.wantURL != "" && result.Url != tc.wantURL {
+				t.Fatalf("url = %q, want %q", result.Url, tc.wantURL)
 			}
 		})
 	}

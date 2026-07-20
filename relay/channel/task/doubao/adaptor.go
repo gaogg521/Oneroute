@@ -73,6 +73,9 @@ type responseTask struct {
 	Status  string `json:"status"`
 	Content struct {
 		VideoURL string `json:"video_url"`
+		// FileURL 为 3D 生成 (doubao-seed3d) 的产物 URL：一个含 .obj/.glb 的模型文件(.zip)。
+		// 视频用 video_url，3D 用 file_url，二者互斥。
+		FileURL string `json:"file_url"`
 	} `json:"content"`
 	Seed            int    `json:"seed"`
 	Resolution      string `json:"resolution"`
@@ -96,6 +99,14 @@ type responseTask struct {
 	} `json:"error"`
 	CreatedAt int64 `json:"created_at"`
 	UpdatedAt int64 `json:"updated_at"`
+}
+
+// resultURL 返回任务产物 URL：视频取 content.video_url，3D 模型取 content.file_url。
+func (r *responseTask) resultURL() string {
+	if r.Content.VideoURL != "" {
+		return r.Content.VideoURL
+	}
+	return r.Content.FileURL
 }
 
 // ============================
@@ -327,7 +338,7 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	case "succeeded":
 		taskResult.Status = model.TaskStatusSuccess
 		taskResult.Progress = "100%"
-		taskResult.Url = resTask.Content.VideoURL
+		taskResult.Url = resTask.resultURL()
 		// 解析 usage 信息用于按倍率计费
 		taskResult.CompletionTokens = resTask.Usage.CompletionTokens
 		taskResult.TotalTokens = resTask.Usage.TotalTokens
@@ -361,7 +372,7 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, erro
 	openAIVideo.TaskID = originTask.TaskID
 	openAIVideo.Status = originTask.Status.ToVideoStatus()
 	openAIVideo.SetProgressStr(originTask.Progress)
-	openAIVideo.SetMetadata("url", dResp.Content.VideoURL)
+	openAIVideo.SetMetadata("url", dResp.resultURL())
 	openAIVideo.CreatedAt = originTask.CreatedAt
 	openAIVideo.CompletedAt = originTask.UpdatedAt
 	openAIVideo.Model = originTask.Properties.OriginModelName
