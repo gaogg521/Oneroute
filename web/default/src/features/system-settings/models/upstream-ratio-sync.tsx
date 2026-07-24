@@ -42,6 +42,12 @@ import {
   type ConflictItem,
 } from './conflict-confirm-dialog'
 import {
+  buildPriceSourcePatch,
+  mergePriceSource,
+  parsePriceSource,
+  PRICE_SOURCE_OPTION_KEY,
+} from './price-source'
+import {
   DEFAULT_ENDPOINT,
   MODELS_DEV_PRESET_ENDPOINT,
   MODELS_DEV_PRESET_ID,
@@ -182,6 +188,11 @@ export function UpstreamRatioSync() {
   >({})
   const [differences, setDifferences] = useState<DifferencesMap>({})
   const [resolutions, setResolutions] = useState<ResolutionsMap>({})
+  // 记录每个模型的选定值来自哪个上游渠道（渠道名），供写入价格来源追踪。
+  // resolutions 只存数值、丢掉了来源，这里并行保留来源渠道名。
+  const [resolutionSources, setResolutionSources] = useState<
+    Record<string, string>
+  >({})
   const [conflictItems, setConflictItems] = useState<ConflictItem[]>([])
   const [confirmLoading, setConfirmLoading] = useState(false)
   const [isPreparingSync, setIsPreparingSync] = useState(false)
@@ -236,6 +247,7 @@ export function UpstreamRatioSync() {
 
       setDifferences(diffs)
       setResolutions({})
+      setResolutionSources({})
 
       if (Object.keys(diffs).length === 0) {
         toast.success(t('No price differences found'))
@@ -274,6 +286,7 @@ export function UpstreamRatioSync() {
       })
 
       setResolutions({})
+      setResolutionSources({})
     },
     onError: (error: Error) => {
       toast.error(error.message || t('Failed to sync prices'))
@@ -358,6 +371,11 @@ export function UpstreamRatioSync() {
 
         return { ...prev, [model]: newModelRes }
       })
+
+      // 记录该模型的选定来源渠道（用于价格来源追踪）。sourceName 为空时不覆盖已有值。
+      if (sourceName) {
+        setResolutionSources((prev) => ({ ...prev, [model]: sourceName }))
+      }
     },
     [differences]
   )
@@ -447,6 +465,28 @@ export function UpstreamRatioSync() {
         value: JSON.stringify(value, null, 2),
       }))
 
+      // 价格来源追踪：把本次同步的每个模型标记为 upstream_sync + 来源渠道名。
+      // 先读现有 PriceSourceHistory 再合并，避免覆盖其他模型的来源记录。
+      const resolvedModels = Object.keys(resolutions)
+      if (resolvedModels.length > 0) {
+        try {
+          const opts = await getSystemOptions()
+          const currentSource = parsePriceSource(opts.data ?? [])
+          const patch = buildPriceSourcePatch(
+            resolvedModels,
+            'upstream_sync',
+            Date.now(),
+            (m) => resolutionSources[m]
+          )
+          updates.push({
+            key: PRICE_SOURCE_OPTION_KEY,
+            value: mergePriceSource(currentSource, patch),
+          })
+        } catch {
+          // 来源追踪是附加信息，读取失败不应阻断价格同步本身
+        }
+      }
+
       return new Promise<boolean>((resolve) => {
         syncMutate(updates, {
           onSuccess: () => resolve(true),
@@ -454,7 +494,7 @@ export function UpstreamRatioSync() {
         })
       })
     },
-    [resolutions, syncMutate]
+    [resolutions, resolutionSources, syncMutate]
   )
 
   const findSourceChannel = (

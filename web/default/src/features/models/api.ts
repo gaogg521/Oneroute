@@ -30,6 +30,7 @@ import type {
   SyncUpstreamResponse,
   PreviewUpstreamDiffResponse,
   MissingModelsResponse,
+  MissingPricingModelsResponse,
   PrefillGroupsResponse,
   SyncLocale,
   SyncSource,
@@ -236,6 +237,24 @@ export async function applyUpstreamOverwrite(params: {
  */
 export async function getMissingModels(): Promise<MissingModelsResponse> {
   const res = await api.get('/api/models/missing')
+  return res.data
+}
+
+/**
+ * Get models that channels can route to but that have no configured price yet
+ */
+export async function getMissingPricingModels(): Promise<MissingPricingModelsResponse> {
+  const res = await api.get('/api/models/missing-pricing')
+  return res.data
+}
+
+/**
+ * Get the deduplicated list of model names currently routable through some
+ * enabled channel. Used to distinguish "a channel actually uses this" from
+ * "this is just a built-in default price entry no channel references".
+ */
+export async function getEnabledModelNames(): Promise<MissingModelsResponse> {
+  const res = await api.get('/api/models/enabled-names')
   return res.data
 }
 

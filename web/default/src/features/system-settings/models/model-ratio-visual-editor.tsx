@@ -35,9 +35,12 @@ import {
   useImperativeHandle,
   useRef,
 } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { getEnabledModelNames } from '@/features/models/api'
+import { modelsQueryKeys } from '@/features/models/lib/query-keys'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import {
   DataTableBulkActions,
@@ -51,7 +54,10 @@ import { Button } from '@/components/ui/button'
 import { combineBillingExpr } from '@/features/pricing/lib/billing-expr'
 import { useMediaQuery } from '@/hooks'
 
+import { getSystemOptions } from '../api'
 import { safeJsonParse } from '../utils/json-parser'
+import { MissingPricingPanel } from './missing-pricing-panel'
+import { parsePriceSource } from './price-source'
 import {
   ModelPricingEditorPanel,
   type ModelPricingEditorPanelHandle,
@@ -89,6 +95,8 @@ type ModelRatioVisualEditorProps = {
   onChange: (field: string, value: string) => void
   onSave: () => void | Promise<void>
   isSaving: boolean
+  /** 价格来源追踪：用户经手动流程改动/删除的模型名，上报给父组件在保存时标记为 manual */
+  onManualTouch?: (names: string[]) => void
 }
 
 export type ModelRatioVisualEditorHandle = {
@@ -125,6 +133,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
     onChange,
     onSave,
     isSaving,
+    onManualTouch,
   },
   ref
 ) {
@@ -303,11 +312,14 @@ const ModelRatioVisualEditorComponent = forwardRef<
     [isMobile]
   )
 
-  const handleAdd = useCallback(() => {
-    setEditData(null)
-    setEditorOpen(true)
-    if (isMobile) setSheetOpen(true)
-  }, [isMobile])
+  const handleAdd = useCallback(
+    (prefillName?: string) => {
+      setEditData(prefillName ? { name: prefillName } : null)
+      setEditorOpen(true)
+      if (isMobile) setSheetOpen(true)
+    },
+    [isMobile]
+  )
 
   const handleGlobalFilterChange = useCallback<OnChangeFn<string>>(
     (updater) => {
@@ -403,6 +415,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
         setEditorOpen(false)
         setSheetOpen(false)
       }
+      // 价格来源追踪：删除的模型也上报，父组件保存时会清掉它的来源戳
+      onManualTouch?.([name])
     },
     [
       modelPrice,
@@ -417,7 +431,38 @@ const ModelRatioVisualEditorComponent = forwardRef<
       billingExpr,
       onChange,
       editData,
+      onManualTouch,
     ]
+  )
+
+  const { data: enabledNamesData } = useQuery({
+    queryKey: modelsQueryKeys.enabledNames(),
+    queryFn: getEnabledModelNames,
+    staleTime: 60 * 1000,
+  })
+  const enabledNamesSet = useMemo(
+    () => new Set(enabledNamesData?.data ?? []),
+    [enabledNamesData]
+  )
+  const isChannelInUse = useCallback(
+    (name: string) => enabledNamesSet.has(name),
+    [enabledNamesSet]
+  )
+
+  // 价格来源追踪：读取 PriceSourceHistory，展示每行价格的来源徽章。
+  // staleTime:0 + 保存/同步/加价成功后 invalidate['system-options']，实现保存即刷新。
+  const { data: priceSourceOptions } = useQuery({
+    queryKey: ['system-options'],
+    queryFn: getSystemOptions,
+    staleTime: 0,
+  })
+  const priceSourceMap = useMemo(
+    () => parsePriceSource(priceSourceOptions?.data ?? []),
+    [priceSourceOptions]
+  )
+  const priceSource = useCallback(
+    (name: string) => priceSourceMap[name],
+    [priceSourceMap]
   )
 
   const columns = useMemo(
@@ -425,9 +470,11 @@ const ModelRatioVisualEditorComponent = forwardRef<
       buildModelRatioColumns({
         onDelete: handleDelete,
         onEdit: handleEdit,
+        isChannelInUse,
+        priceSource,
         t,
       }),
-    [handleEdit, handleDelete, t]
+    [handleEdit, handleDelete, isChannelInUse, priceSource, t]
   )
 
   const { table } = useDataTable({
@@ -571,6 +618,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
         'billing_setting.billing_expr',
         JSON.stringify(billingExprMap, null, 2)
       )
+      // 价格来源追踪：这些模型是被管理员手动改动的，上报给父组件在保存时标记 manual
+      onManualTouch?.(targetNames)
     },
     [
       modelPrice,
@@ -584,6 +633,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
       billingMode,
       billingExpr,
       onChange,
+      onManualTouch,
     ]
   )
 
@@ -741,6 +791,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
     <div className='flex flex-col gap-4'>
       <div className='grid h-[clamp(720px,calc(100vh-12rem),900px)] min-h-0 gap-4 md:grid-cols-[minmax(300px,0.72fr)_minmax(520px,1.28fr)] xl:grid-cols-[minmax(320px,0.68fr)_minmax(640px,1.32fr)]'>
         <div className='flex min-h-0 min-w-0 flex-col gap-3'>
+          <MissingPricingPanel onConfigure={handleAdd} />
+
           <DataTableToolbar
             table={table}
             searchPlaceholder={t('Search models...')}
@@ -768,7 +820,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
               },
             ]}
             preActions={
-              <Button onClick={handleAdd}>
+              <Button onClick={() => handleAdd()}>
                 <Plus data-icon='inline-start' />
                 {t('Add model')}
               </Button>
@@ -853,7 +905,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
                   'Use the full-width table to scan prices, then select a row to edit it here.'
                 )}
               </p>
-              <Button variant='outline' onClick={handleAdd}>
+              <Button variant='outline' onClick={() => handleAdd()}>
                 <Plus data-icon='inline-start' />
                 {t('Add model')}
               </Button>

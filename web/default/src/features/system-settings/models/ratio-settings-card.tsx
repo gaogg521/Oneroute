@@ -24,15 +24,23 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import * as z from 'zod'
 
+import { modelsQueryKeys } from '@/features/models/lib/query-keys'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
-import { resetModelRatios } from '../api'
+import { getSystemOptions, resetModelRatios } from '../api'
 import { SettingsPageTitleStatusPortal } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
 import { GroupRatioForm } from './group-ratio-form'
 import { ModelRatioForm } from './model-ratio-form'
+import {
+  buildPriceSourcePatch,
+  mergePriceSource,
+  parsePriceSource,
+  PRICE_SOURCE_OPTION_KEY,
+  removePriceSourceEntries,
+} from './price-source'
 import { ToolPriceSettings } from './tool-price-settings'
 import { UpstreamRatioSync } from './upstream-ratio-sync'
 import {
@@ -151,6 +159,8 @@ export function RatioSettingsCard({
   const updateOption = useUpdateOption()
   const queryClient = useQueryClient()
   const [confirmOpen, setConfirmOpen] = useState(false)
+  // 价格来源追踪：累积本次经手动流程改动/删除的模型名，保存时统一标记 manual / 清除
+  const manualTouchedRef = useRef<Set<string>>(new Set())
 
   const resetMutation = useMutation({
     mutationFn: resetModelRatios,
@@ -158,6 +168,7 @@ export function RatioSettingsCard({
       if (data.success) {
         toast.success(t('Model prices reset successfully'))
         queryClient.invalidateQueries({ queryKey: ['system-options'] })
+        queryClient.invalidateQueries({ queryKey: modelsQueryKeys.missingPricing() })
         setConfirmOpen(false)
       } else {
         toast.error(data.message || t('Failed to reset model ratios'))
@@ -327,6 +338,7 @@ export function RatioSettingsCard({
 
       if (updates.length === 0) {
         toast.info(t('No model price changes to save'))
+        manualTouchedRef.current.clear()
         return
       }
 
@@ -335,10 +347,53 @@ export function RatioSettingsCard({
         await updateOption.mutateAsync({ key: apiKey, value: normalized[key] })
       }
 
+      // 价格来源追踪：把本次手动改动过的模型标记为 manual；被删掉的清除来源戳。
+      const touched = Array.from(manualTouchedRef.current)
+      if (touched.length > 0) {
+        try {
+          const parseKeys = (json: string): Set<string> => {
+            try {
+              const obj = JSON.parse(json)
+              return obj && typeof obj === 'object'
+                ? new Set(Object.keys(obj))
+                : new Set()
+            } catch {
+              return new Set()
+            }
+          }
+          // 模型是否仍有价格：出现在 ModelRatio / ModelPrice / BillingExpr 任一即算存在
+          const pricedNames = new Set<string>([
+            ...parseKeys(normalized.ModelRatio),
+            ...parseKeys(normalized.ModelPrice),
+            ...parseKeys(normalized.BillingExpr),
+          ])
+          const manualModels = touched.filter((m) => pricedNames.has(m))
+          const removedModels = touched.filter((m) => !pricedNames.has(m))
+
+          const opts = await getSystemOptions()
+          const current = parsePriceSource(opts.data ?? [])
+          const withManual = JSON.parse(
+            mergePriceSource(
+              current,
+              buildPriceSourcePatch(manualModels, 'manual', Date.now())
+            )
+          )
+          const finalValue = removePriceSourceEntries(withManual, removedModels)
+          await updateOption.mutateAsync({
+            key: PRICE_SOURCE_OPTION_KEY,
+            value: finalValue,
+          })
+        } catch {
+          // 来源追踪是附加信息，失败不影响价格本身已保存
+        }
+      }
+      manualTouchedRef.current.clear()
+
       modelNormalizedDefaults.current = normalized
       setSavedModelValues(normalized)
+      queryClient.invalidateQueries({ queryKey: modelsQueryKeys.missingPricing() })
     },
-    [t, updateOption]
+    [t, updateOption, queryClient]
   )
 
   const saveGroupRatios = useCallback(
@@ -409,6 +464,9 @@ export function RatioSettingsCard({
           onReset={handleResetRatios}
           isSaving={updateOption.isPending}
           isResetting={resetMutation.isPending}
+          onManualTouch={(names) =>
+            names.forEach((n) => manualTouchedRef.current.add(n))
+          }
         />
       )
     }

@@ -212,6 +212,24 @@ export interface MissingModelsResponse {
 }
 
 /**
+ * A model channels can route to that has no configured price yet.
+ */
+export interface MissingPricingModel {
+  model_name: string
+  request_count: number
+  total_quota: number
+}
+
+/**
+ * Missing pricing models response
+ */
+export interface MissingPricingModelsResponse {
+  success: boolean
+  message?: string
+  data?: MissingPricingModel[]
+}
+
+/**
  * Prefill groups response
  */
 export interface PrefillGroupsResponse {

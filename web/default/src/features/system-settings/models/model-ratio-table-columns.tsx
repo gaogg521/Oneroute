@@ -30,6 +30,7 @@ import {
   getPriceSummary,
   type ModelRow,
 } from './model-pricing-snapshots'
+import type { PriceSourceEntry } from './price-source'
 
 const filterBySelectedValues = (
   rowValue: unknown,
@@ -39,15 +40,38 @@ const filterBySelectedValues = (
   return filterValue.includes(String(rowValue))
 }
 
+/** 价格来源徽章：手动 / 同步·渠道 / 加价·渠道；无来源记录返回 null 不显示 */
+function buildSourceBadge(
+  entry: PriceSourceEntry | undefined,
+  t: (key: string) => string
+): { label: string; variant: 'neutral' | 'info' | 'warning' } | null {
+  if (!entry) return null
+  const channel = entry.channel ? `·${entry.channel}` : ''
+  switch (entry.source) {
+    case 'manual':
+      return { label: t('Manual'), variant: 'neutral' }
+    case 'upstream_sync':
+      return { label: `${t('Synced')}${channel}`, variant: 'info' }
+    case 'batch_markup':
+      return { label: `${t('Markup')}${channel}`, variant: 'warning' }
+    default:
+      return null
+  }
+}
+
 type BuildModelRatioColumnsOptions = {
   onDelete: (name: string) => void
   onEdit: (model: ModelRow) => void
+  isChannelInUse: (name: string) => boolean
+  priceSource: (name: string) => PriceSourceEntry | undefined
   t: (key: string) => string
 }
 
 export function buildModelRatioColumns({
   onDelete,
   onEdit,
+  isChannelInUse,
+  priceSource,
   t,
 }: BuildModelRatioColumnsOptions): ColumnDef<ModelRow>[] {
   return [
@@ -79,27 +103,61 @@ export function buildModelRatioColumns({
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title={t('Model name')} />
       ),
-      cell: ({ row }) => (
-        <div className='flex min-w-0 items-center gap-2 font-medium'>
-          <span className='min-w-0 truncate'>{row.getValue('name')}</span>
-          {row.original.billingMode === 'tiered_expr' && (
-            <StatusBadge
-              label={t('Tiered')}
-              variant='info'
-              copyable={false}
-              className='shrink-0'
-            />
-          )}
-          {row.original.hasConflict && (
-            <StatusBadge
-              label={t('Conflict')}
-              variant='danger'
-              copyable={false}
-              className='shrink-0'
-            />
-          )}
+      cell: ({ row }) => {
+        const src = priceSource(row.original.name)
+        const srcBadge = buildSourceBadge(src, t)
+        return (
+        <div className='flex min-w-0 flex-col gap-1 font-medium'>
+          <span className='min-w-0 truncate' title={row.getValue('name')}>
+            {row.getValue('name')}
+          </span>
+          <div className='flex flex-wrap items-center gap-1.5'>
+            {isChannelInUse(row.original.name) ? (
+              <StatusBadge
+                label={t('In use')}
+                variant='success'
+                copyable={false}
+                showDot={false}
+                className='shrink-0'
+              />
+            ) : (
+              <StatusBadge
+                label={t('Built-in default')}
+                variant='neutral'
+                copyable={false}
+                showDot={false}
+                className='shrink-0'
+              />
+            )}
+            {srcBadge && (
+              <StatusBadge
+                label={srcBadge.label}
+                variant={srcBadge.variant}
+                copyable={false}
+                showDot={false}
+                className='shrink-0'
+              />
+            )}
+            {row.original.billingMode === 'tiered_expr' && (
+              <StatusBadge
+                label={t('Tiered')}
+                variant='info'
+                copyable={false}
+                className='shrink-0'
+              />
+            )}
+            {row.original.hasConflict && (
+              <StatusBadge
+                label={t('Conflict')}
+                variant='danger'
+                copyable={false}
+                className='shrink-0'
+              />
+            )}
+          </div>
         </div>
-      ),
+        )
+      },
       enableHiding: false,
     },
     {

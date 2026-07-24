@@ -68,6 +68,13 @@ import {
   NativeSelectOption,
 } from '@/components/ui/native-select'
 import { Spinner } from '@/components/ui/spinner'
+import {
+  buildPriceSourcePatch,
+  mergePriceSource,
+  parsePriceSource,
+  PRICE_SOURCE_OPTION_KEY,
+  removePriceSourceEntries,
+} from '@/features/system-settings/models/price-source'
 import { getLobeIcon } from '@/lib/lobe-icon'
 
 import {
@@ -405,6 +412,16 @@ export function PriceMarkup() {
         key: MARKUP_HISTORY_OPTION_KEY,
         value: mergeMarkupHistory(currentHistory, { [model]: updatedEntry }),
       })
+      // 价格来源追踪：标记该模型为 batch_markup + 来源渠道
+      await updateSystemOption({
+        key: PRICE_SOURCE_OPTION_KEY,
+        value: mergePriceSource(
+          parsePriceSource(opts.data ?? []),
+          buildPriceSourcePatch([model], 'batch_markup', Date.now(), () =>
+            stripChannelId(entry.sourceChannel)
+          )
+        ),
+      })
     },
     onSuccess: () => {
       toast.success(t('Markup updated'))
@@ -412,6 +429,7 @@ export function PriceMarkup() {
       void queryClient.invalidateQueries({
         queryKey: priceMarkupQueryKeys.history(),
       })
+      void queryClient.invalidateQueries({ queryKey: ['system-options'] })
     },
     onError: (e: Error) =>
       toast.error(e.message || t('Failed to update markup')),
@@ -454,6 +472,16 @@ export function PriceMarkup() {
         key: MARKUP_HISTORY_OPTION_KEY,
         value: mergeMarkupHistory(currentHistory, { [model]: updatedEntry }),
       })
+      // 价格来源追踪：直接改价也归为 batch_markup（仍是本工具管理的模型）
+      await updateSystemOption({
+        key: PRICE_SOURCE_OPTION_KEY,
+        value: mergePriceSource(
+          parsePriceSource(opts.data ?? []),
+          buildPriceSourcePatch([model], 'batch_markup', Date.now(), () =>
+            stripChannelId(entry.sourceChannel)
+          )
+        ),
+      })
     },
     onSuccess: () => {
       toast.success(t('Markup updated'))
@@ -461,6 +489,7 @@ export function PriceMarkup() {
       void queryClient.invalidateQueries({
         queryKey: priceMarkupQueryKeys.history(),
       })
+      void queryClient.invalidateQueries({ queryKey: ['system-options'] })
     },
     onError: (e: Error) =>
       toast.error(e.message || t('Failed to update markup')),
@@ -481,6 +510,13 @@ export function PriceMarkup() {
         key: MARKUP_HISTORY_OPTION_KEY,
         value: removeMarkupHistoryEntry(currentHistory, model),
       })
+      // 价格被还原，来源戳一并清除
+      await updateSystemOption({
+        key: PRICE_SOURCE_OPTION_KEY,
+        value: removePriceSourceEntries(parsePriceSource(opts.data ?? []), [
+          model,
+        ]),
+      })
     },
     onSuccess: () => {
       toast.success(t('Price reset'))
@@ -488,6 +524,7 @@ export function PriceMarkup() {
       void queryClient.invalidateQueries({
         queryKey: priceMarkupQueryKeys.history(),
       })
+      void queryClient.invalidateQueries({ queryKey: ['system-options'] })
     },
     onError: (e: Error) => toast.error(e.message || t('Failed to reset price')),
   })
@@ -515,6 +552,11 @@ export function PriceMarkup() {
         key: MARKUP_HISTORY_OPTION_KEY,
         value: removeMarkupHistoryEntries(currentHistory, models),
       })
+      // 价格被还原，来源戳一并清除
+      await updateSystemOption({
+        key: PRICE_SOURCE_OPTION_KEY,
+        value: removePriceSourceEntries(parsePriceSource(opts.data ?? []), models),
+      })
       return models.length
     },
     onSuccess: (count: number) => {
@@ -523,6 +565,7 @@ export function PriceMarkup() {
       void queryClient.invalidateQueries({
         queryKey: priceMarkupQueryKeys.history(),
       })
+      void queryClient.invalidateQueries({ queryKey: ['system-options'] })
     },
     onError: (e: Error) => toast.error(e.message || t('Failed to reset price')),
   })
@@ -545,6 +588,22 @@ export function PriceMarkup() {
         key: MARKUP_HISTORY_OPTION_KEY,
         value: mergeMarkupHistory(currentHistory, newEntries),
       })
+      // 价格来源追踪：本次加价涉及的每个模型标记为 batch_markup + 各自来源渠道
+      const channelByModel = new Map(
+        plan.rows.map((r) => [r.model, stripChannelId(r.sourceChannel)])
+      )
+      await updateSystemOption({
+        key: PRICE_SOURCE_OPTION_KEY,
+        value: mergePriceSource(
+          parsePriceSource(opts.data ?? []),
+          buildPriceSourcePatch(
+            plan.rows.map((r) => r.model),
+            'batch_markup',
+            Date.now(),
+            (m) => channelByModel.get(m)
+          )
+        ),
+      })
       return updates.length
     },
     onSuccess: () => {
@@ -554,6 +613,7 @@ export function PriceMarkup() {
       void queryClient.invalidateQueries({
         queryKey: priceMarkupQueryKeys.history(),
       })
+      void queryClient.invalidateQueries({ queryKey: ['system-options'] })
     },
     onError: (e: Error) => toast.error(e.message || t('Failed to apply markup')),
   })
