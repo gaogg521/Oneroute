@@ -51,6 +51,11 @@ import {
   useDataTable,
 } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from '@/components/ui/resizable'
 import { combineBillingExpr } from '@/features/pricing/lib/billing-expr'
 import { useMediaQuery } from '@/hooks'
 
@@ -104,6 +109,28 @@ export type ModelRatioVisualEditorHandle = {
 }
 
 const STORAGE_KEY = 'model-ratio-column-visibility'
+const PANEL_LAYOUT_STORAGE_KEY = 'model-ratio-panel-layout'
+const DEFAULT_PANEL_LAYOUT: Record<string, number> = {
+  'model-ratio-list-panel': 38,
+  'model-ratio-editor-panel': 62,
+}
+
+// Guards against persisting a transient/degenerate layout (e.g. a 0-width
+// measurement during first paint) that would otherwise poison localStorage
+// and collapse the list panel on every future load.
+function isValidPanelLayout(value: unknown): value is Record<string, number> {
+  if (!value || typeof value !== 'object') return false
+  const listSize = (value as Record<string, number>)['model-ratio-list-panel']
+  const editorSize = (value as Record<string, number>)[
+    'model-ratio-editor-panel'
+  ]
+  return (
+    typeof listSize === 'number' &&
+    typeof editorSize === 'number' &&
+    listSize >= 15 &&
+    listSize <= 80
+  )
+}
 
 const ModelRatioVisualEditorComponent = forwardRef<
   ModelRatioVisualEditorHandle,
@@ -190,6 +217,29 @@ const ModelRatioVisualEditorComponent = forwardRef<
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(columnVisibility))
   }, [columnVisibility])
+
+  // Panel widths default to a fixed 0.72fr/1.28fr split, which clips the
+  // price summary column whenever the sidebar is narrow. Let the user drag
+  // the divider instead and remember their preferred split across visits.
+  const [panelLayout] = useState<Record<string, number>>(() => {
+    const saved = localStorage.getItem(PANEL_LAYOUT_STORAGE_KEY)
+    if (saved) {
+      const parsed = safeJsonParse<Record<string, number>>(saved, {
+        fallback: DEFAULT_PANEL_LAYOUT,
+        silent: true,
+      })
+      if (isValidPanelLayout(parsed)) return parsed
+    }
+    return DEFAULT_PANEL_LAYOUT
+  })
+
+  const handlePanelLayoutChanged = useCallback(
+    (layout: Record<string, number>) => {
+      if (!isValidPanelLayout(layout)) return
+      localStorage.setItem(PANEL_LAYOUT_STORAGE_KEY, JSON.stringify(layout))
+    },
+    []
+  )
 
   const models = useMemo(() => {
     const savedRows = buildModelSnapshots({
@@ -787,11 +837,9 @@ const ModelRatioVisualEditorComponent = forwardRef<
 
   const hasRows = table.getRowModel().rows.length > 0
 
-  return (
-    <div className='flex flex-col gap-4'>
-      <div className='grid h-[clamp(720px,calc(100vh-12rem),900px)] min-h-0 gap-4 md:grid-cols-[minmax(300px,0.72fr)_minmax(520px,1.28fr)] xl:grid-cols-[minmax(320px,0.68fr)_minmax(640px,1.32fr)]'>
-        <div className='flex min-h-0 min-w-0 flex-col gap-3'>
-          <MissingPricingPanel onConfigure={handleAdd} />
+  const listPanelContent = (
+    <div className='flex h-full min-h-0 min-w-0 flex-col gap-3'>
+      <MissingPricingPanel onConfigure={handleAdd} />
 
           <DataTableToolbar
             table={table}
@@ -887,36 +935,75 @@ const ModelRatioVisualEditorComponent = forwardRef<
             />
           )}
 
-          {hasRows && <DataTablePagination table={table} />}
-        </div>
+      {hasRows && <DataTablePagination table={table} />}
+    </div>
+  )
 
-        <div className='hidden min-h-0 min-w-0 md:block'>
-          {editorOpen ? (
-            <ModelPricingEditorPanel
-              ref={editorPanelRef}
-              editData={editData}
-              onSave={onSave}
-              isSaving={isSaving}
-              className='h-full min-h-0'
-            />
-          ) : (
-            <div className='bg-card text-muted-foreground flex h-full min-h-0 flex-col items-center justify-center gap-3 rounded-xl border border-dashed p-6 text-center'>
-              <div className='text-foreground text-base font-medium'>
-                {t('Select a model to edit pricing')}
-              </div>
-              <p className='max-w-sm text-sm'>
-                {t(
-                  'Use the full-width table to scan prices, then select a row to edit it here.'
-                )}
-              </p>
-              <Button variant='outline' onClick={() => handleAdd()}>
-                <Plus data-icon='inline-start' />
-                {t('Add model')}
-              </Button>
-            </div>
-          )}
+  const editorPanelContent = (
+    <div className='h-full min-h-0 min-w-0'>
+      {editorOpen ? (
+        <ModelPricingEditorPanel
+          ref={editorPanelRef}
+          editData={editData}
+          onSave={onSave}
+          isSaving={isSaving}
+          className='h-full min-h-0'
+        />
+      ) : (
+        <div className='bg-card text-muted-foreground flex h-full min-h-0 flex-col items-center justify-center gap-3 rounded-xl border border-dashed p-6 text-center'>
+          <div className='text-foreground text-base font-medium'>
+            {t('Select a model to edit pricing')}
+          </div>
+          <p className='max-w-sm text-sm'>
+            {t(
+              'Use the full-width table to scan prices, then select a row to edit it here.'
+            )}
+          </p>
+          <Button variant='outline' onClick={() => handleAdd()}>
+            <Plus data-icon='inline-start' />
+            {t('Add model')}
+          </Button>
         </div>
-      </div>
+      )}
+    </div>
+  )
+
+  return (
+    <div className='flex flex-col gap-4'>
+      {isMobile ? (
+        <div className='h-[clamp(720px,calc(100vh-12rem),900px)] min-h-0'>
+          {listPanelContent}
+        </div>
+      ) : (
+        // User-draggable split instead of a fixed 0.72fr/1.28fr grid: fixed
+        // widths clipped the price summary column whenever the sidebar was
+        // narrow, with no way for the admin to see more of it. Layout is
+        // remembered across visits via PANEL_LAYOUT_STORAGE_KEY.
+        <ResizablePanelGroup
+          id='model-ratio-panels'
+          orientation='horizontal'
+          defaultLayout={panelLayout}
+          onLayoutChanged={handlePanelLayoutChanged}
+          className='h-[clamp(720px,calc(100vh-12rem),900px)] min-h-0'
+        >
+          <ResizablePanel
+            id='model-ratio-list-panel'
+            minSize='26%'
+            maxSize='65%'
+            className='pe-2'
+          >
+            {listPanelContent}
+          </ResizablePanel>
+          <ResizableHandle withHandle />
+          <ResizablePanel
+            id='model-ratio-editor-panel'
+            minSize='30%'
+            className='ps-2'
+          >
+            {editorPanelContent}
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      )}
 
       <DataTableBulkActions table={table} entityName={t('model')}>
         <Button size='sm' disabled={!editData} onClick={handleBatchCopy}>
