@@ -108,7 +108,7 @@ export function buildModelRatioColumns({
         const srcBadge = buildSourceBadge(src, t)
         return (
         <div className='flex min-w-0 flex-col gap-1 font-medium'>
-          <span className='min-w-0 truncate' title={row.getValue('name')}>
+          <span className='min-w-0 break-all whitespace-normal'>
             {row.getValue('name')}
           </span>
           <div className='flex flex-wrap items-center gap-1.5'>

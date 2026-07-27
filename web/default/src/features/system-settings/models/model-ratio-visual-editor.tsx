@@ -838,7 +838,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
               table={table}
               containerClassName='min-h-0 flex-1 rounded-md'
               tableContainerClassName='h-full'
-              tableClassName='min-w-[852px] table-fixed'
+              tableClassName='w-full table-fixed'
               tableHeaderClassName='[&_tr]:border-b-0'
               splitHeaderScrollClassName='h-full'
               bodyContainerClassName='[scrollbar-gutter:stable]'
@@ -850,11 +850,15 @@ const ModelRatioVisualEditorComponent = forwardRef<
                 },
               ]}
               colgroup={
+                /* Percentages, not fixed px: fixed widths summing past this
+                   narrow master panel made the table overflow, and the
+                   container's overflow-hidden clipped model names mid-word
+                   with no ellipsis to hint the text was cut. */
                 <colgroup>
                   <col className='w-9' />
-                  <col className='w-[300px]' />
-                  <col className='w-[120px]' />
-                  <col className='w-[300px]' />
+                  <col className='w-[42%]' />
+                  <col className='w-[16%]' />
+                  <col className='w-[26%]' />
                   <col className='w-auto' />
                 </colgroup>
               }
