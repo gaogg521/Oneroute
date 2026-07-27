@@ -628,7 +628,16 @@ func buildDifferences(localData map[string]any, successfulChannels []struct {
 
 				upstreamValues[channel.name] = upstreamValue
 
-				confidenceValues[channel.name] = confidenceMap[channel.name][modelName]
+				// billing_mode/billing_expr 是独立于 model_ratio 的字段：某个模型的
+				// model_ratio 恰好命中 37.5+1 占位特征，不代表它的阶梯计费公式也是假的
+				// （典型场景：上游 has_model_ratio:false 但带着完整 tiered_expr 公式）。
+				// 不可信标记按模型整体打，会连坐这两个真实字段，导致管理员在 UI 上看到
+				// 无关的"不可靠"警告而不敢勾选，价格实际上从未同步成功。
+				if ratioType == billing_setting.BillingModeField || ratioType == billing_setting.BillingExprField {
+					confidenceValues[channel.name] = true
+				} else {
+					confidenceValues[channel.name] = confidenceMap[channel.name][modelName]
+				}
 			}
 
 			shouldInclude := false
